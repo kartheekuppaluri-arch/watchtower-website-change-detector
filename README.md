@@ -1,162 +1,295 @@
-# WatchTower — Website Change Detection & Diff Engine
+# WatchTower --- Website Change Detection & Diff Engine
 
-A full-stack, production-grade service that monitors public web pages, captures content snapshots, filters dynamic noise, and alerts users to meaningful changes while preventing false positives.
+**Track website changes without checking every page manually.**
 
-**Live Application:** [https://watchtower-website-change-detector.vercel.app/](https://watchtower-website-change-detector.vercel.app/)
+WatchTower is a full-stack web application for monitoring public web
+pages, comparing captured versions, and highlighting changes that may
+matter. It brings together a web dashboard, a crawling and comparison
+pipeline, noise-filtering logic, and monitor history.
 
----
+> **Project status:** The application runs locally. The Vercel frontend
+> is available as a preview, but monitor API requests currently return a
+> 404, so the hosted version is not yet a reliable end-to-end demo. Use
+> the local setup below to evaluate the application.
 
-## Overview
+**Repository:**
+[GitHub](https://github.com/kartheekuppaluri-arch/watchtower-website-change-detector)\
+**Hosted preview:** [WatchTower on
+Vercel](https://watchtower-website-change-detector.vercel.app/)
 
-WatchTower is designed to monitor web content reliably at scale. Unlike simple HTTP pollers, WatchTower implements multi-layered noise suppression, visual region extraction, request coalescing, and incident detection to ensure alerts represent authentic, actionable page modifications.
+------------------------------------------------------------------------
 
-The application is deployed as a single full-stack project on Vercel, combining a modern React/Vite dashboard with an Express-powered serverless backend.
+## Why WatchTower?
 
----
+Website content can change without notice. Checking pages manually is
+repetitive, and basic page comparisons can produce noisy results when
+content includes clocks, timestamps, rotating banners, or other dynamic
+elements.
 
-## Core Engineering Decisions
+WatchTower explores how to automate this workflow by fetching page
+content, normalizing it, comparing versions, and presenting differences
+through a dashboard.
 
-### 1. Is a site outage or CAPTCHA considered a change?
-**No. Outages and challenges are classified as incidents, not content changes.**
+## Features
 
-- **Problem:** Treating HTTP 5xx responses, timeouts, or Cloudflare/CAPTCHA challenge pages as content updates generates false alarms and corrupts clean baseline snapshots with error HTML.
-- **Solution:** Before DOM parsing, the engine evaluates responses via `inspectForOutageOrCaptcha()`. Responses matching 5xx status codes, Cloudflare Turnstile tokens, or CAPTCHA challenges are categorized as `OUTAGE`, `CAPTCHA`, or `BLOCKED`. Change alerts are suppressed, no corrupted snapshot is recorded, and the incident is appended to the monitor's audit history with an updated status badge.
+The repository includes modules and UI for the following capabilities.
+Individual workflows should be tested in the local application before
+relying on them in a live environment.
 
-### 2. If 200 users monitor the same URL, is it fetched 200 times?
-**No. Concurrent requests are coalesced into a single crawl job.**
+-   **Website monitors** --- create and manage monitored URLs.
+-   **Content crawling** --- retrieve page content for analysis.
+-   **Change comparison** --- compare versions and highlight additions
+    or removals.
+-   **Noise filtering** --- ignore selected page regions and normalize
+    common dynamic values.
+-   **Monitor history** --- view recorded versions and related change
+    information.
+-   **Visual selector tools** --- configure regions to watch or ignore,
+    where supported by the current workflow.
+-   **Testing Studio** --- mock targets for experimenting with store,
+    news, and status-page scenarios.
+-   **Alert and digest components** --- code for processing change
+    notifications and summaries.
+-   **API endpoints** --- backend routes for monitor management and
+    related operations.
 
-- **Problem:** Redundant crawls of the same URL waste server bandwidth and trigger target IP rate limits.
-- **Solution:** A centralized `FetchDeduplicator` manages an in-flight Promise map keyed by normalized URL. If multiple monitors or users request a check for the same target concurrently, only one fetch/render job executes. The resulting DOM snapshot is distributed to all waiting monitors simultaneously, where each monitor's custom CSS selectors and noise filters execute in-memory.
+## How It Works
 
-### 3. How to avoid false alerts on pages that change on every load?
-**Multi-layer noise scrubbing with similarity threshold gating.**
+At a high level, the monitoring pipeline is designed to:
 
-- **Problem:** Dynamic elements (live clocks, view counters, session IDs, rotating banners) cause content hashes to mutate on every request.
-- **Solution:**
-  1. **Ignore Selectors:** Removes targeted DOM subtrees (`#live-clock`, `.view-counter`, `.ad-banner`) prior to text extraction.
-  2. **Regex Normalization:** Strips ISO timestamps, relative dates ("3 minutes ago"), UUIDs, and user-defined regex patterns.
-  3. **Similarity Gating:** Computes word-level Jaccard similarity and character delta against sensitivity thresholds (High: 0.5%, Medium: 4.0%, Low: 15.0%). Variations below the threshold are filtered as background noise.
-  4. **Hash Deduplication:** Stores a new snapshot only when the SHA-256 hash of normalized text differs from the latest record.
+1.  Accept a website monitor configuration.
+2.  Fetch the target page.
+3.  Extract and normalize relevant content.
+4.  Compare the new content with a previously captured version.
+5.  Filter likely noise and determine whether a meaningful difference
+    exists.
+6.  Record the result and pass detected changes to the alert-processing
+    logic.
+7.  Present monitor status and change history in the dashboard.
 
-### 4. How to prevent hammering external servers?
-**Per-domain mutex queues with polite crawl delays.**
+The exact behavior depends on the configured monitor and the target
+website. Some pages may block automated requests or rely on client-side
+JavaScript to render their content.
 
-- **Problem:** Uncontrolled polling can degrade target site performance or result in IP blacklisting.
-- **Solution:** The `DomainRateLimiter` enforces a strict concurrency ceiling of one active request per hostname, along with an enforced delay (1.5–2.0 seconds) between successive requests to the same origin. Exponential backoff with jitter is applied on transient network errors.
+## Architecture
 
----
-
-## Key Features
-
-- **Visual Region Selector:** Point-and-click interface to define Watch Selectors (regions of interest) and Ignore Selectors (noise elements) without manual CSS inspection.
-- **3-Way Diff Engine:**
-  - **Text Diff:** Unified and split side-by-side diff highlighting line-level and word-level additions/deletions.
-  - **Visual Comparison:** Interactive horizontal swipe curtain comparing before-and-after screenshots.
-  - **Pixelmatch Mask:** Pixel-level visual difference highlight overlay.
-- **Automated Summaries:** Rule-assisted and NLP summarization highlighting specific events (e.g., price drop from $49.99 to $39.99, restock notices).
-- **Multi-Channel Alerts:** Webhook delivery (Discord/Telegram/Slack format) and simulated email alerts with deduplication ensuring no duplicate notifications for the same state.
-- **Numerical & Metric Tracking:** Automatically parses numeric values (e.g. pricing, stock quantities) to render trend lines across recorded versions.
-- **Version Timeline & RSS Feed:** Detailed audit trail of all historical snapshots, diff metrics, and content hashes, alongside an RSS 2.0 XML endpoint per monitor.
-- **Interactive Testing Studio:** Built-in mock targets (`/mock/store`, `/mock/news`, `/mock/status`) to simulate price drops, restock toggles, dynamic clocks, and 503 outages directly from the UI.
-
----
-
-## Architecture & Technology Stack
-
+``` text
+┌──────────────────────────────────────────────────┐
+│                  React Frontend                  │
+│             Dashboard and Components             │
+└────────────────────────┬─────────────────────────┘
+                         │ HTTP requests
+                         ▼
+┌──────────────────────────────────────────────────┐
+│                 Backend API                      │
+│            Node.js / Express routes              │
+└────────────────────────┬─────────────────────────┘
+                         │
+                         ▼
+┌──────────────────────────────────────────────────┐
+│               Monitoring Pipeline                │
+│                                                  │
+│  Crawler → Content Extraction → Noise Filtering  │
+│                         → Diff Engine             │
+└────────────────────────┬─────────────────────────┘
+                         │
+                         ▼
+┌──────────────────────────────────────────────────┐
+│          Data Layer, History and Alerts           │
+└──────────────────────────────────────────────────┘
 ```
-┌────────────────────────────────────────────────────────┐
-│                   Vercel Deployment                    │
-├───────────────────────────┬────────────────────────────┤
-│      Vite Frontend        │     Express Serverless     │
-│   React 19 + Lucide UI    │   api/index.js (Handler)   │
-│   Client-side SPA         │   /api/* & /mock/* routes  │
-└─────────────┬─────────────┴──────────────┬─────────────┘
-              │                            │
-              ▼                            ▼
-      Browser Client               Crawler & Diff Engine
-   (Diff Modal, Picker)          (Cheerio / Puppeteer / Diff)
-                                           │
-                                           ▼
-                                 Persistence & Alerts
-                              (/tmp & In-Memory / Webhook)
-```
 
-- **Frontend:** React 19, Vite, Lucide Icons, Vanilla CSS with custom design system (dark mode, glassmorphism).
-- **Backend:** Node.js, Express 4.
-- **Crawling & Scraping:** Cheerio (high-speed DOM parsing on serverless), Puppeteer-Core (local headless Chrome/Edge automation).
-- **Diffing:** jsdiff (Myers diff algorithm), pixelmatch, pngjs.
-- **Scheduling:** Vercel Cron Jobs (production) and background setInterval timer (local).
+The codebase separates the UI, API, crawler, comparison logic, noise
+filtering, scheduling, and data-layer code into distinct modules.
 
----
+## Technology Stack
 
-## Vercel Deployment Architecture
+-   **Frontend:** React, Vite, JavaScript, CSS, Lucide icons
+-   **Backend:** Node.js, Express
+-   **Crawling and parsing:** Cheerio and Puppeteer-related tooling
+-   **Comparison:** `jsdiff`, `pixelmatch`, and `pngjs`
+-   **Data layer:** Implemented in `server/db.js`
+-   **Development and version control:** npm, Git, GitHub
+-   **Deployment exploration:** Vercel
 
-The application is structured for unified, single-repository deployment on Vercel:
+The crawler's capabilities can differ between local and serverless
+environments. For example, local browser-based rendering may depend on
+an installed Chrome or Edge browser, while serverless execution has
+different runtime and filesystem constraints.
 
-1. **Serverless Function Entry Points (`api/index.js`, `api/[...path].js`):**
-   Vercel compiles the `api/` directory into serverless functions. The Express app is exported directly as the request handler, receiving incoming HTTP calls routed by `vercel.json`.
-
-2. **Route Handling (`vercel.json`):**
-   Requests to `/api/*` and `/mock/*` route to the Express handler, while all frontend asset requests route to the static `dist/` directory. Unmatched paths fall back to `index.html` for client-side routing.
-
-3. **Database & State Management:**
-   - Serverless containers run on an ephemeral, read-only root filesystem.
-   - For demo resilience, `server/db.js` uses an in-memory cache backed by `/tmp/data/db.json` when running in production, pre-seeded with baseline monitors so all features function immediately upon cold start.
-   - For permanent production workloads, an external managed database (e.g. PostgreSQL, Supabase, Neon, or Vercel KV) can be configured via environment variables.
-
-4. **Environment-Adaptive Crawler:**
-   - **Local / Self-Hosted:** Detects local Google Chrome or Microsoft Edge installations to capture viewport screenshots and render JavaScript SPAs.
-   - **Vercel Serverless:** Automatically falls back to high-speed Cheerio HTTP fetching and generates lightweight SVG visual preview snapshots, operating within serverless memory and execution limits.
-
----
-
-## Local Development Setup
+## Run Locally
 
 ### Prerequisites
-- Node.js 18.0 or higher
-- Google Chrome or Microsoft Edge (optional, for local headless browser screenshots)
 
-### Installation & Execution
+-   Node.js 18 or later
+-   npm
+-   Google Chrome or Microsoft Edge if using browser-based screenshot
+    functionality
 
-```bash
-# 1. Clone the repository
+### Setup
+
+Clone the repository:
+
+``` bash
 git clone https://github.com/kartheekuppaluri-arch/watchtower-website-change-detector.git
 cd watchtower-website-change-detector
+```
 
-# 2. Install dependencies
+Install dependencies:
+
+``` bash
 npm install
+```
 
-# 3. Start development environment (runs backend and Vite concurrently)
+Start the development environment:
+
+``` bash
 npm run dev
 ```
 
-The application will be accessible at:
-- **Frontend Dashboard:** `http://localhost:5173`
-- **Backend API:** `http://localhost:3001`
-- **Mock E-Commerce Store:** `http://localhost:3001/mock/store`
-- **Mock News Portal:** `http://localhost:3001/mock/news`
-- **Mock Status Board:** `http://localhost:3001/mock/status`
+The project is configured to run the frontend and backend together in
+development. If startup fails, check the scripts in `package.json` and
+the terminal output for the exact error.
 
-### Build Verification
-```bash
+Common local addresses:
+
+-   **Frontend:** `http://localhost:5173`
+-   **Backend API:** `http://localhost:3001`
+-   **Mock store:** `http://localhost:3001/mock/store`
+-   **Mock news page:** `http://localhost:3001/mock/news`
+-   **Mock status page:** `http://localhost:3001/mock/status`
+
+These addresses assume the development server uses the default ports
+configured in the project.
+
+### Build Check
+
+To verify that the frontend production build completes:
+
+``` bash
 npm run build
 ```
 
----
+A successful build checks compilation and bundling; it does not, by
+itself, verify that every API route or monitoring workflow works.
 
-## API Summary
+## API Overview
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/monitors` | `GET` | List all monitors with latest snapshot and incident counts |
-| `/api/monitors` | `POST` | Create a new monitor configuration |
-| `/api/monitors/:id` | `GET` | Fetch single monitor details and full version history |
-| `/api/monitors/:id` | `PUT` | Update monitor selectors, intervals, or alert rules |
-| `/api/monitors/:id` | `DELETE` | Delete a monitor and its historical snapshots |
-| `/api/monitors/:id/check` | `POST` | Trigger an immediate manual check for a monitor |
-| `/api/monitors/check-all` | `POST` / `GET` | Execute checks across all active monitors (used by Vercel Cron) |
-| `/api/diff/compare` | `POST` | Compute text diff, visual diff, and summary between any two snapshots |
-| `/api/picker/inspect` | `POST` | Inspect and extract DOM tree for visual selector configuration |
-| `/api/alerts/test-webhook` | `POST` | Test delivery of Discord / Telegram / generic webhook payloads |
-| `/api/monitors/:id/rss` | `GET` | Output standard RSS 2.0 XML feed of page changes |
-| `/api/digest` | `GET` | Compile 24-hour daily digest of changes and incidents |
+The backend code includes routes intended for these operations:
+
+  ----------------------------------------------------------------------------
+  Endpoint                     Method                  Purpose
+  ---------------------------- ----------------------- -----------------------
+  `/api/monitors`              `GET`                   List monitors
+
+  `/api/monitors`              `POST`                  Create a monitor
+
+  `/api/monitors/:id`          `GET`                   Retrieve monitor
+                                                       details and history
+
+  `/api/monitors/:id`          `PUT`                   Update monitor settings
+
+  `/api/monitors/:id`          `DELETE`                Delete a monitor
+
+  `/api/monitors/:id/check`    `POST`                  Trigger a manual check
+
+  `/api/monitors/check-all`    `POST` / `GET`          Trigger checks across
+                                                       active monitors
+
+  `/api/diff/compare`          `POST`                  Compare snapshots
+
+  `/api/picker/inspect`        `POST`                  Inspect page structure
+                                                       for selector
+                                                       configuration
+
+  `/api/alerts/test-webhook`   `POST`                  Test webhook delivery
+
+  `/api/monitors/:id/rss`      `GET`                   Return a monitor RSS
+                                                       feed
+
+  `/api/digest`                `GET`                   Retrieve a change
+                                                       digest
+  ----------------------------------------------------------------------------
+
+**Note:** This table documents the intended API surface in the codebase;
+it should not be interpreted as confirmation that these routes are
+currently reachable in the Vercel deployment.
+
+## Deployment Status
+
+The project has been deployed to Vercel as an experiment in hosting the
+frontend and backend together. The current hosted version has an
+unresolved API routing issue: requests to the monitor API return
+`404 Not Found`.
+
+The local development environment is the current demonstration
+environment.
+
+Before treating the hosted version as production-ready, the following
+still need to be verified:
+
+-   Correct routing for every required API endpoint.
+-   Reliable persistent storage across serverless invocations.
+-   Scheduled monitoring under the hosting platform's execution model.
+-   Crawler behavior and time limits in the deployed runtime.
+-   End-to-end monitor creation, checking, and history retrieval.
+
+A serverless function's temporary filesystem or in-memory state should
+not be assumed to provide durable storage. A production deployment may
+require a managed database and suitable scheduling configuration.
+
+## Known Limitations
+
+-   The hosted monitor API currently returns 404 errors.
+-   Persistence and scheduled execution need validation in the
+    deployment environment.
+-   Some websites may block crawlers, rate-limit requests, or render
+    content dynamically.
+-   A successful frontend build does not guarantee that the complete
+    full-stack workflow is operational.
+
+## Possible Next Steps
+
+-   Resolve Vercel API routing and add deployment smoke tests.
+-   Configure durable storage for production.
+-   Add automated tests for crawler, diff, and noise-filter behavior.
+-   Improve retry handling, observability, and error reporting.
+-   Validate the scheduler and alert delivery in a persistent
+    environment.
+
+## Project Structure
+
+``` text
+watchtower-website-change-detector/
+├── api/                    # Serverless API entry points
+├── server/
+│   ├── engine/
+│   │   ├── alerts.js       # Alert-processing logic
+│   │   ├── crawler.js      # Website retrieval
+│   │   ├── differ.js       # Content comparison
+│   │   ├── noiseFilter.js  # Noise filtering
+│   │   └── scheduler.js    # Scheduling logic
+│   ├── db.js               # Data-layer logic
+│   ├── index.js            # Express server
+│   └── mockServer.js       # Local mock targets
+├── src/
+│   ├── components/         # UI components
+│   └── App.jsx             # Main React application
+├── package.json
+├── vite.config.js
+└── README.md
+```
+
+## Author
+
+**Kartheek Uppaluri**\
+Computer Science and Engineering, VIT Vellore
+
+-   **GitHub:**
+    [kartheekuppaluri-arch](https://github.com/kartheekuppaluri-arch)
+
+------------------------------------------------------------------------
+
+*WatchTower is a learning and development project. Verify the current
+implementation and deployment status before relying on it for production
+monitoring.*
