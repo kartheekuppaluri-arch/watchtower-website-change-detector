@@ -1,9 +1,28 @@
 const puppeteer = require('puppeteer-core');
+const cheerio = require('cheerio');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
-const SCREENSHOTS_DIR = path.join(__dirname, '..', '..', 'data', 'screenshots');
+const isVercel = Boolean(process.env.VERCEL);
+const SCREENSHOTS_DIR = isVercel
+  ? path.join('/tmp', 'screenshots')
+  : path.join(__dirname, '..', '..', 'data', 'screenshots');
+
+function resolveUrl(url) {
+  if (!url) return '';
+  // Support relative mock URLs or localhost URLs in deployed environments
+  if (url.startsWith('/')) {
+    const origin = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}` 
+      : `http://localhost:${process.env.PORT || 3001}`;
+    return `${origin}${url}`;
+  }
+  if (process.env.VERCEL_URL && url.includes('localhost:3001')) {
+    return url.replace('http://localhost:3001', `https://${process.env.VERCEL_URL}`);
+  }
+  return url;
+}
 
 // Auto-detect system browser executable (Chrome or Edge on Windows)
 function getBrowserExecutablePath() {
@@ -78,13 +97,19 @@ function inspectForOutageOrCaptcha(status, html, pageTitle = '') {
  * Crawl a page using headless browser (Puppeteer) with screenshot capture
  */
 async function crawlWithBrowser(url, options = {}) {
+  url = resolveUrl(url);
   const execPath = getBrowserExecutablePath();
   if (!execPath) {
-    throw new Error('No supported browser executable (Chrome or Edge) found on system.');
+    console.log(`[CRAWLER] No local browser binary detected; falling back to high-speed Cheerio HTTP crawler for: ${url}`);
+    return await crawlWithHttp(url);
   }
 
-  if (!fs.existsSync(SCREENSHOTS_DIR)) {
-    fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(SCREENSHOTS_DIR)) {
+      fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+    }
+  } catch (e) {
+    console.warn('[CRAWLER] Could not create screenshots dir, continuing:', e.message);
   }
 
   const timeoutMs = options.timeoutMs || 25000;
@@ -176,20 +201,31 @@ async function crawlWithBrowser(url, options = {}) {
  */
 async function crawlWithHttp(url) {
   try {
-    const res = await fetch(url, {
+    const targetUrl = resolveUrl(url);
+    const res = await fetch(targetUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
       }
     });
     const rawHtml = await res.text();
-    const incidentCheck = inspectForOutageOrCaptcha(res.status, rawHtml);
+    let title = '';
+    try {
+      const $ = cheerio.load(rawHtml);
+      title = $('title').text() || '';
+    } catch (_) {}
+
+    const incidentCheck = inspectForOutageOrCaptcha(res.status, rawHtml, title);
+
+    // Create a lightweight SVG visual preview data URL for environments without browser screenshots
+    const encodedTitle = encodeURIComponent(title || targetUrl);
+    const screenshotUrl = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500"><rect width="800" height="500" fill="%230f172a"/><text x="400" y="220" fill="%2338bdf8" font-family="sans-serif" font-size="28" font-weight="bold" text-anchor="middle">DOM Text Snapshot</text><text x="400" y="260" fill="%2394a3b8" font-family="sans-serif" font-size="16" text-anchor="middle">${encodedTitle.slice(0, 50)}</text><text x="400" y="300" fill="%2334d399" font-family="sans-serif" font-size="14" text-anchor="middle">HTTP Status: ${res.status} OK</text></svg>`;
 
     return {
       success: !incidentCheck.isIncident,
       status: res.status,
-      title: '',
+      title,
       rawHtml,
-      screenshotUrl: '',
+      screenshotUrl,
       incident: incidentCheck
     };
   } catch (err) {

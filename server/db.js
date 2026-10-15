@@ -2,14 +2,17 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
-const DB_PATH = path.join(__dirname, '..', 'data', 'db.json');
+const isVercel = Boolean(process.env.VERCEL);
+const DB_PATH = isVercel
+  ? path.join('/tmp', 'data', 'db.json')
+  : path.join(__dirname, '..', 'data', 'db.json');
 
 const defaultDb = {
   monitors: [
     {
       id: 'monitor-store-demo',
       name: 'TechGadget Headphones (Price & Stock)',
-      url: 'http://localhost:3001/mock/store',
+      url: '/mock/store',
       intervalMinutes: 15,
       watchSelector: '#product-details',
       ignoreSelectors: ['.live-viewers-count', '.promo-ticker'],
@@ -30,7 +33,7 @@ const defaultDb = {
     {
       id: 'monitor-news-demo',
       name: 'Global Tech News Portal',
-      url: 'http://localhost:3001/mock/news',
+      url: '/mock/news',
       intervalMinutes: 30,
       watchSelector: 'main article',
       ignoreSelectors: ['#live-clock', '.ad-banner', '.view-counter'],
@@ -51,7 +54,7 @@ const defaultDb = {
     {
       id: 'monitor-status-demo',
       name: 'Cloud Infrastructure Status',
-      url: 'http://localhost:3001/mock/status',
+      url: '/mock/status',
       intervalMinutes: 60,
       watchSelector: '#status-board',
       ignoreSelectors: [],
@@ -77,34 +80,50 @@ const defaultDb = {
 
 class Database {
   constructor() {
+    // In-memory cache ensures that operations never fail on serverless or read-only filesystems
+    this.memoryDb = JSON.parse(JSON.stringify(defaultDb));
     this.init();
   }
 
   init() {
-    const dir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    if (!fs.existsSync(DB_PATH)) {
-      fs.writeFileSync(DB_PATH, JSON.stringify(defaultDb, null, 2), 'utf-8');
+    try {
+      const dir = path.dirname(DB_PATH);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      if (!fs.existsSync(DB_PATH)) {
+        fs.writeFileSync(DB_PATH, JSON.stringify(defaultDb, null, 2), 'utf-8');
+      } else {
+        const fileContent = fs.readFileSync(DB_PATH, 'utf-8');
+        this.memoryDb = JSON.parse(fileContent);
+      }
+    } catch (e) {
+      console.warn('[DB] Filesystem init note (using in-memory fallback):', e.message);
     }
   }
 
   read() {
     try {
-      const data = fs.readFileSync(DB_PATH, 'utf-8');
-      return JSON.parse(data);
+      if (fs.existsSync(DB_PATH)) {
+        const data = fs.readFileSync(DB_PATH, 'utf-8');
+        this.memoryDb = JSON.parse(data);
+      }
     } catch (e) {
-      console.error('Error reading db.json, returning default:', e);
-      return defaultDb;
+      // Fallback silently to in-memory store
     }
+    return this.memoryDb || defaultDb;
   }
 
   write(data) {
+    this.memoryDb = data;
     try {
+      const dir = path.dirname(DB_PATH);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
       fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
     } catch (e) {
-      console.error('Error writing db.json:', e);
+      console.warn('[DB] Filesystem write skipped (running in-memory):', e.message);
     }
   }
 

@@ -24,6 +24,7 @@ class DomainRateLimiter {
   }
 
   async acquireLock(url) {
+    if (process.env.VERCEL) return; // Avoid delay in serverless functions
     const host = this.getHostname(url);
     // Wait until host is not busy
     while (this.activeHostLocks.has(host)) {
@@ -79,15 +80,15 @@ class FetchDeduplicator {
 
 class Scheduler {
   constructor() {
-    this.rateLimiter = new DomainRateLimiter(1500); // 1.5s per host
+    this.rateLimiter = new DomainRateLimiter(process.env.VERCEL ? 0 : 1500);
     this.deduplicator = new FetchDeduplicator();
     this.isProcessingQueue = false;
     this.timer = null;
-    this.maxRetries = 2;
+    this.maxRetries = process.env.VERCEL ? 1 : 2;
   }
 
   start() {
-    if (this.timer) return;
+    if (this.timer || process.env.VERCEL) return;
     console.log('[SCHEDULER] Background monitor scheduler started.');
     // Check every 30 seconds for monitors due for checking
     this.timer = setInterval(() => {
@@ -105,17 +106,22 @@ class Scheduler {
   async checkDueMonitors() {
     const monitors = db.getMonitors().filter(m => m.active);
     const now = Date.now();
+    const results = [];
 
     for (const monitor of monitors) {
       const intervalMs = (monitor.intervalMinutes || 15) * 60 * 1000;
       const lastCheckTime = monitor.lastChecked ? new Date(monitor.lastChecked).getTime() : 0;
-      if (now - lastCheckTime >= intervalMs) {
-        // Run check asynchronously without blocking loop
-        this.runCheck(monitor.id).catch(err => {
+      if (now - lastCheckTime >= intervalMs || process.env.VERCEL) {
+        try {
+          const res = await this.runCheck(monitor.id);
+          results.push({ id: monitor.id, name: monitor.name, res });
+        } catch (err) {
           console.error(`Check failed for ${monitor.name}:`, err);
-        });
+          results.push({ id: monitor.id, name: monitor.name, error: err.message });
+        }
       }
     }
+    return results;
   }
 
   /**
@@ -130,6 +136,7 @@ class Scheduler {
     let crawlResult = null;
     let attempt = 0;
     let lastErr = null;
+    const timeoutMs = process.env.VERCEL ? 8000 : 25000;
 
     // Retry loop with exponential backoff
     while (attempt <= this.maxRetries) {
@@ -138,7 +145,7 @@ class Scheduler {
 
         // Deduplicate fetch if another check for same URL is already running
         crawlResult = await this.deduplicator.fetch(monitor.url, async () => {
-          return await crawlWithBrowser(monitor.url, { timeoutMs: 25000 });
+          return await crawlWithBrowser(monitor.url, { timeoutMs });
         });
 
         this.rateLimiter.releaseLock(monitor.url);

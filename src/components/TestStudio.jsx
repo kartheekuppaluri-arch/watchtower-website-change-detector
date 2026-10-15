@@ -59,7 +59,7 @@ export default function TestStudio({ monitors, onCheckNow }) {
               <ShoppingCart size={16} color="var(--cyan-400)" />
               <strong style={{ fontSize: '14px', color: '#f8fafc' }}>E-Commerce Store</strong>
             </div>
-            <a href="http://localhost:3001/mock/store" target="_blank" rel="noreferrer" className="monitor-url" style={{ fontSize: '11px' }}>
+            <a href="/mock/store" target="_blank" rel="noreferrer" className="monitor-url" style={{ fontSize: '11px' }}>
               Open Page <ExternalLink size={10} />
             </a>
           </div>
@@ -109,7 +109,7 @@ export default function TestStudio({ monitors, onCheckNow }) {
               <Newspaper size={16} color="var(--violet-400)" />
               <strong style={{ fontSize: '14px', color: '#f8fafc' }}>Tech News Portal</strong>
             </div>
-            <a href="http://localhost:3001/mock/news" target="_blank" rel="noreferrer" className="monitor-url" style={{ fontSize: '11px' }}>
+            <a href="/mock/news" target="_blank" rel="noreferrer" className="monitor-url" style={{ fontSize: '11px' }}>
               Open Page <ExternalLink size={10} />
             </a>
           </div>
@@ -152,7 +152,7 @@ export default function TestStudio({ monitors, onCheckNow }) {
               <Activity size={16} color="var(--emerald-400)" />
               <strong style={{ fontSize: '14px', color: '#f8fafc' }}>Status Page (Question 1)</strong>
             </div>
-            <a href="http://localhost:3001/mock/status" target="_blank" rel="noreferrer" className="monitor-url" style={{ fontSize: '11px' }}>
+            <a href="/mock/status" target="_blank" rel="noreferrer" className="monitor-url" style={{ fontSize: '11px' }}>
               Open Page <ExternalLink size={10} />
             </a>
           </div>

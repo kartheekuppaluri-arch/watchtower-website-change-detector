@@ -4,6 +4,7 @@
   "description": "Production-grade website change detection and alerting engine with visual diff, noise filtering, and smart deduplication",
   "main": "server/index.js",
   "scripts": {
+    "build": "vite build",
     "server": "node server/index.js",
     "dev:frontend": "vite",
     "build:frontend": "vite build",
@@ -15,9 +16,9 @@
     "cors": "^2.8.5",
     "diff": "^7.0.0",
     "express": "^4.21.2",
-    "puppeteer-core": "^24.4.0",
-    "pixelmatch": "^7.1.0",
+    "pixelmatch": "^5.3.0",
     "pngjs": "^7.0.0",
+    "puppeteer-core": "^24.4.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {

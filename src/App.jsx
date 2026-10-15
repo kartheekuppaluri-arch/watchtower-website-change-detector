@@ -23,9 +23,14 @@ export default function App() {
   // Fetch monitors
   const loadMonitors = () => {
     return fetch('/api/monitors')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(data => {
-        setMonitors(data.monitors || []);
+        if (data && Array.isArray(data.monitors)) {
+          setMonitors(data.monitors);
+        }
       })
       .catch(err => console.error('Failed to load monitors:', err))
       .finally(() => setLoading(false));

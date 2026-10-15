@@ -12,33 +12,71 @@ const { setupMockRoutes } = require('./mockServer');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const isVercel = Boolean(process.env.VERCEL);
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Static directory for snapshot screenshots
-const SCREENSHOTS_DIR = path.join(__dirname, '..', 'data', 'screenshots');
-if (!fs.existsSync(SCREENSHOTS_DIR)) {
-  fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+// Static directory for snapshot screenshots (safe on Vercel)
+const SCREENSHOTS_DIR = isVercel
+  ? path.join('/tmp', 'screenshots')
+  : path.join(__dirname, '..', 'data', 'screenshots');
+
+try {
+  if (!fs.existsSync(SCREENSHOTS_DIR)) {
+    fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+  }
+} catch (e) {
+  console.warn('[SERVER] Could not create screenshots directory, continuing:', e.message);
 }
+
 app.use('/api/screenshots', express.static(SCREENSHOTS_DIR));
 
-// Serve production frontend bundle if built
+// Serve production frontend bundle if built (for local standalone run)
 const DIST_DIR = path.join(__dirname, '..', 'dist');
-if (fs.existsSync(DIST_DIR)) {
+if (fs.existsSync(DIST_DIR) && !isVercel) {
   app.use(express.static(DIST_DIR));
 }
 
-// Setup Mock Web Server for testing
+// Normalize URL if Vercel serverless rewrite sets function destination path
+app.use((req, res, next) => {
+  const matched = req.headers['x-matched-path'] || req.headers['x-forwarded-uri'] || req.headers['x-original-url'];
+  if (matched && (req.url === '/api' || req.url === '/api/' || req.url === '/api/index' || req.url === '/api/index.js' || req.url === '/')) {
+    req.url = matched;
+  }
+  next();
+});
+
+// Setup Mock Web Server routes (/mock/store, /mock/news, /mock/status, etc.)
 setupMockRoutes(app);
 
+// -------------------------------------------------------------
+// API ROUTER (Handles both /api/* and /* fallbacks on Vercel)
+// -------------------------------------------------------------
+const apiRouter = express.Router();
 
-// -------------------------------------------------------------
-// MONITOR API ENDPOINTS
-// -------------------------------------------------------------
+// Root API Health
+apiRouter.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'WatchTower Website Change Detector API',
+    version: '1.0.0',
+    platform: isVercel ? 'Vercel Serverless' : 'Node.js Standalone'
+  });
+});
+
+// Vercel Cron endpoint
+apiRouter.get('/cron', async (req, res) => {
+  try {
+    const results = await scheduler.checkDueMonitors();
+    res.json({ success: true, count: results.length, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // List monitors
-app.get('/api/monitors', (req, res) => {
+apiRouter.get('/monitors', (req, res) => {
   const monitors = db.getMonitors();
   const enhanced = monitors.map(m => {
     const snapshots = db.getSnapshots(m.id);
@@ -54,8 +92,29 @@ app.get('/api/monitors', (req, res) => {
   res.json({ monitors: enhanced });
 });
 
+// Trigger check for all monitors (supports both POST and GET for cron)
+const handleCheckAll = async (req, res) => {
+  try {
+    const monitors = db.getMonitors().filter(m => m.active);
+    const results = [];
+    for (const m of monitors) {
+      try {
+        const checkRes = await scheduler.runCheck(m.id);
+        results.push({ id: m.id, name: m.name, result: checkRes });
+      } catch (e) {
+        results.push({ id: m.id, name: m.name, error: e.message });
+      }
+    }
+    res.json({ message: `Triggered checks for ${monitors.length} monitors`, count: results.length, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+apiRouter.post('/monitors/check-all', handleCheckAll);
+apiRouter.get('/monitors/check-all', handleCheckAll);
+
 // Get single monitor
-app.get('/api/monitors/:id', (req, res) => {
+apiRouter.get('/monitors/:id', (req, res) => {
   const monitor = db.getMonitor(req.params.id);
   if (!monitor) return res.status(404).json({ error: 'Monitor not found' });
   const snapshots = db.getSnapshots(monitor.id);
@@ -64,12 +123,12 @@ app.get('/api/monitors/:id', (req, res) => {
 });
 
 // Create monitor
-app.post('/api/monitors', (req, res) => {
+apiRouter.post('/monitors', (req, res) => {
   const { name, url, intervalMinutes, watchSelector, ignoreSelectors, sensitivity, noiseFilterActive, customRegex, keywordAlerts, numberTracking, alertEmail, alertWebhook } = req.body;
   if (!url) return res.status(400).json({ error: 'URL is required' });
 
   const created = db.createMonitor({
-    name: name || new URL(url).hostname,
+    name: name || new URL(url.startsWith('http') ? url : `https://${url}`).hostname,
     url,
     intervalMinutes: Number(intervalMinutes) || 15,
     watchSelector,
@@ -83,29 +142,29 @@ app.post('/api/monitors', (req, res) => {
     alertWebhook
   });
 
-  // Automatically queue first baseline check in background
+  // Execute first baseline check
   scheduler.runCheck(created.id).catch(err => {
-    console.error(`Baseline check failed for ${created.name}:`, err);
+    console.error(`Baseline check note for ${created.name}:`, err.message);
   });
 
   res.status(201).json({ monitor: created });
 });
 
 // Update monitor
-app.put('/api/monitors/:id', (req, res) => {
+apiRouter.put('/monitors/:id', (req, res) => {
   const updated = db.updateMonitor(req.params.id, req.body);
   if (!updated) return res.status(404).json({ error: 'Monitor not found' });
   res.json({ monitor: updated });
 });
 
 // Delete monitor
-app.delete('/api/monitors/:id', (req, res) => {
+apiRouter.delete('/monitors/:id', (req, res) => {
   const success = db.deleteMonitor(req.params.id);
   res.json({ success });
 });
 
 // Trigger immediate check for a monitor
-app.post('/api/monitors/:id/check', async (req, res) => {
+apiRouter.post('/monitors/:id/check', async (req, res) => {
   try {
     const result = await scheduler.runCheck(req.params.id);
     const updated = db.getMonitor(req.params.id);
@@ -116,39 +175,27 @@ app.post('/api/monitors/:id/check', async (req, res) => {
   }
 });
 
-// Trigger check for all monitors
-app.post('/api/monitors/check-all', async (req, res) => {
-  const monitors = db.getMonitors().filter(m => m.active);
-  const results = [];
-  for (const m of monitors) {
-    try {
-      const res = await scheduler.runCheck(m.id);
-      results.push({ id: m.id, name: m.name, res });
-    } catch (e) {
-      results.push({ id: m.id, name: m.name, error: e.message });
-    }
-  }
-  res.json({ message: `Triggered checks for ${monitors.length} monitors`, results });
-});
-
 // Get version timeline snapshots
-app.get('/api/monitors/:id/snapshots', (req, res) => {
+apiRouter.get('/monitors/:id/snapshots', (req, res) => {
   const snapshots = db.getSnapshots(req.params.id);
   res.json({ snapshots });
 });
 
 // Get incidents (Outages, CAPTCHAs, Blocks)
-app.get('/api/monitors/:id/incidents', (req, res) => {
+apiRouter.get('/monitors/:id/incidents', (req, res) => {
   const incidents = db.getIncidents(req.params.id);
   res.json({ incidents });
 });
 
-// Bonus: Per-Page RSS Feed Generator
-app.get('/api/monitors/:id/rss', (req, res) => {
+// Per-Page RSS Feed Generator
+apiRouter.get('/monitors/:id/rss', (req, res) => {
   const monitor = db.getMonitor(req.params.id);
   if (!monitor) return res.status(404).send('Monitor not found');
 
   const snapshots = db.getSnapshots(monitor.id);
+  const host = req.get('host') || 'localhost:3001';
+  const protocol = req.protocol || 'http';
+  const siteUrl = `${protocol}://${host}`;
   
   const rssXml = `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0">
@@ -160,13 +207,13 @@ app.get('/api/monitors/:id/rss', (req, res) => {
   ${snapshots.map((s, idx) => `
   <item>
     <title>Version ${snapshots.length - idx}: ${escapeXml(s.summary || 'Content Updated')}</title>
-    <link>http://localhost:5173/?monitor=${monitor.id}&amp;snap=${s.id}</link>
+    <link>${siteUrl}/?monitor=${monitor.id}&amp;snap=${s.id}</link>
     <pubDate>${new Date(s.timestamp).toUTCString()}</pubDate>
     <description><![CDATA[
       <p><strong>Change Summary:</strong> ${s.summary}</p>
       <p><strong>Diff:</strong> +${s.diffStats?.addedLines || 0} / -${s.diffStats?.removedLines || 0} lines (${s.diffStats?.changedPercent || 0}%)</p>
       <p><strong>Hash:</strong> ${s.contentHash}</p>
-      ${s.screenshotUrl ? `<p><img src="http://localhost:3001${s.screenshotUrl}" alt="Snapshot Screenshot" style="max-width:500px;"/></p>` : ''}
+      ${s.screenshotUrl && !s.screenshotUrl.startsWith('data:') ? `<p><img src="${siteUrl}${s.screenshotUrl}" alt="Snapshot Screenshot" style="max-width:500px;"/></p>` : ''}
     ]]></description>
   </item>`).join('\n')}
 </channel>
@@ -192,9 +239,7 @@ function escapeXml(unsafe) {
 // -------------------------------------------------------------
 // DIFF & COMPARISON API
 // -------------------------------------------------------------
-
-// Compare any two snapshots (Requirement 6: Text diff, visual screenshot diff, side-by-side)
-app.post('/api/diff/compare', async (req, res) => {
+apiRouter.post('/diff/compare', async (req, res) => {
   const { snapshotIdA, snapshotIdB } = req.body;
   if (!snapshotIdA || !snapshotIdB) {
     return res.status(400).json({ error: 'snapshotIdA and snapshotIdB are required' });
@@ -212,7 +257,7 @@ app.post('/api/diff/compare', async (req, res) => {
 
   // 2. Visual Screenshot Diff
   let visualDiffResult = { hasDiff: false, diffPercentage: 0, diffImageUrl: null };
-  if (snapA.screenshotUrl && snapB.screenshotUrl) {
+  if (snapA.screenshotUrl && snapB.screenshotUrl && !snapA.screenshotUrl.startsWith('data:') && !snapB.screenshotUrl.startsWith('data:')) {
     visualDiffResult = await computeVisualScreenshotDiff(snapA.screenshotUrl, snapB.screenshotUrl);
   }
 
@@ -231,14 +276,12 @@ app.post('/api/diff/compare', async (req, res) => {
 // -------------------------------------------------------------
 // VISUAL REGION PICKER API
 // -------------------------------------------------------------
-
-// Inspect page to extract HTML & DOM structure for visual selector picker
-app.post('/api/picker/inspect', async (req, res) => {
+apiRouter.post('/picker/inspect', async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'URL is required' });
 
   try {
-    const result = await crawlWithBrowser(url, { timeoutMs: 15000 });
+    const result = await crawlWithBrowser(url, { timeoutMs: isVercel ? 8000 : 15000 });
     res.json({
       success: result.success,
       status: result.status,
@@ -254,11 +297,12 @@ app.post('/api/picker/inspect', async (req, res) => {
 // -------------------------------------------------------------
 // ALERTS & NOTIFICATIONS API
 // -------------------------------------------------------------
-
-// Test Webhook delivery
-app.post('/api/alerts/test-webhook', async (req, res) => {
+apiRouter.post('/alerts/test-webhook', async (req, res) => {
   const { webhookUrl, monitorName = 'Test Target' } = req.body;
   if (!webhookUrl) return res.status(400).json({ error: 'webhookUrl is required' });
+
+  const host = req.get('host') || 'localhost:3001';
+  const protocol = req.protocol || 'http';
 
   const testPayload = {
     monitorId: 'test-mon',
@@ -266,7 +310,7 @@ app.post('/api/alerts/test-webhook', async (req, res) => {
     pageUrl: 'https://example.com/test-product',
     summary: 'TEST ALERT: Price decreased from $99.00 to $79.00 (-20%).',
     diffStats: { addedLines: 2, removedLines: 2, changedPercent: 12 },
-    diffLink: 'http://localhost:5173/?view=diff&test=true',
+    diffLink: `${protocol}://${host}/?view=diff&test=true`,
     timestamp: new Date().toISOString()
   };
 
@@ -274,26 +318,51 @@ app.post('/api/alerts/test-webhook', async (req, res) => {
   res.json({ success, message: success ? 'Webhook delivered successfully!' : 'Webhook delivery failed. Please check the URL format.' });
 });
 
-// Daily Digest summary
-app.get('/api/digest', (req, res) => {
+apiRouter.get('/digest', (req, res) => {
   const digest = generateDailyDigest();
   res.json({ digest });
 });
 
-// Alerts audit history
-app.get('/api/alerts/history', (req, res) => {
+apiRouter.get('/alerts/history', (req, res) => {
   const alerts = db.getAlerts(50);
   res.json({ alerts });
 });
 
-// Start scheduler and listen
-scheduler.start();
+// Mount the API router at BOTH /api and / (ensures zero 404s on Vercel)
+app.use('/api', apiRouter);
+app.use(apiRouter);
 
-app.listen(PORT, () => {
-  console.log(`=======================================================`);
-  console.log(`🚀 Website Change Detector Backend running on port ${PORT}`);
-  console.log(`📡 Mock E-commerce Store: http://localhost:${PORT}/mock/store`);
-  console.log(`📡 Mock News Portal:     http://localhost:${PORT}/mock/news`);
-  console.log(`📡 Mock Outage/Status:   http://localhost:${PORT}/mock/status`);
-  console.log(`=======================================================`);
+// Fallback 404 for unhandled API and Mock calls
+app.use(['/api', '/api/*', '/mock', '/mock/*'], (req, res) => {
+  res.status(404).json({
+    error: `Route not found: ${req.method} ${req.originalUrl || req.url}`,
+    code: 'NOT_FOUND'
+  });
 });
+
+// Global JSON error handler
+app.use((err, req, res, next) => {
+  console.error('[SERVER ERROR]', err);
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({
+    error: err.message || 'Internal Server Error',
+    code: err.code || 'SERVER_ERROR'
+  });
+});
+
+// Start scheduler only if not on Vercel
+if (!isVercel) {
+  scheduler.start();
+  if (require.main === module || process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, () => {
+      console.log(`=======================================================`);
+      console.log(`🚀 Website Change Detector Backend running on port ${PORT}`);
+      console.log(`📡 Mock E-commerce Store: http://localhost:${PORT}/mock/store`);
+      console.log(`📡 Mock News Portal:     http://localhost:${PORT}/mock/news`);
+      console.log(`📡 Mock Outage/Status:   http://localhost:${PORT}/mock/status`);
+      console.log(`=======================================================`);
+    });
+  }
+}
+
+module.exports = app;
