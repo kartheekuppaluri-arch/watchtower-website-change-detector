@@ -10,6 +10,7 @@ import {
   Filter, 
   Sparkles 
 } from 'lucide-react';
+import { apiFetch, apiUrl } from '../api';
 
 export default function AddMonitorModal({ monitor, onClose, onSave }) {
   const [name, setName] = useState(monitor?.name || '');
@@ -30,21 +31,21 @@ export default function AddMonitorModal({ monitor, onClose, onSave }) {
   const fillMock = (type) => {
     if (type === 'store') {
       setName('TechGadget Headphones (Price & Stock)');
-      setUrl('http://localhost:3001/mock/store');
+      setUrl(apiUrl('/mock/store'));
       setWatchSelector('#product-details');
       setIgnoreInput('.live-viewers-count, .promo-ticker');
       setNumberTracking(true);
       setKeywordAlerts('Price, In Stock, Out of Stock');
     } else if (type === 'news') {
       setName('Tech Chronicle News Portal');
-      setUrl('http://localhost:3001/mock/news');
+      setUrl(apiUrl('/mock/news'));
       setWatchSelector('main article');
       setIgnoreInput('#live-clock, .ad-banner');
       setCustomRegex('\\d{1,2}:\\d{2}:\\d{2}\\s*(?:AM|PM)');
       setKeywordAlerts('Breaking, AI, Launch');
     } else if (type === 'status') {
       setName('Cloud Infrastructure Health');
-      setUrl('http://localhost:3001/mock/status');
+      setUrl(apiUrl('/mock/status'));
       setWatchSelector('#status-board');
       setIgnoreInput('');
       setKeywordAlerts('Operational, Degraded, Outage');
@@ -55,7 +56,7 @@ export default function AddMonitorModal({ monitor, onClose, onSave }) {
     if (!alertWebhook) return;
     setTestingWebhook(true);
     setWebhookTestMsg('');
-    fetch('/api/alerts/test-webhook', {
+    apiFetch('/api/alerts/test-webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ webhookUrl: alertWebhook, monitorName: name || 'Test Monitor' })

@@ -11,6 +11,7 @@ import {
   Clock, 
   ArrowRight 
 } from 'lucide-react';
+import { apiFetch, apiUrl } from '../api';
 
 export default function DiffModal({ monitor, onClose }) {
   const [snapshots, setSnapshots] = useState([]);
@@ -27,7 +28,7 @@ export default function DiffModal({ monitor, onClose }) {
   useEffect(() => {
     if (!monitor) return;
     setLoading(true);
-    fetch(`/api/monitors/${monitor.id}/snapshots`)
+    apiFetch(`/api/monitors/${monitor.id}/snapshots`)
       .then(r => r.json())
       .then(data => {
         const list = data.snapshots || [];
@@ -47,7 +48,7 @@ export default function DiffModal({ monitor, onClose }) {
   // Fetch diff comparison whenever selection changes
   useEffect(() => {
     if (!selectedA || !selectedB) return;
-    fetch('/api/diff/compare', {
+    apiFetch('/api/diff/compare', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ snapshotIdA: selectedB, snapshotIdB: selectedA })
@@ -290,7 +291,7 @@ export default function DiffModal({ monitor, onClose }) {
                 >
                   {/* Base Screenshot (Before) */}
                   <img 
-                    src={snapA.screenshotUrl} 
+                    src={apiUrl(snapA.screenshotUrl)} 
                     alt="Before Screenshot" 
                     className="visual-image" 
                   />
@@ -301,7 +302,7 @@ export default function DiffModal({ monitor, onClose }) {
                     style={{ width: `${sliderPos}%`, borderRight: '2px solid var(--cyan-400)' }}
                   >
                     <img 
-                      src={snapB.screenshotUrl} 
+                      src={apiUrl(snapB.screenshotUrl)} 
                       alt="After Screenshot" 
                       style={{ 
                         position: 'absolute', 
@@ -350,7 +351,7 @@ export default function DiffModal({ monitor, onClose }) {
                   padding: '10px'
                 }}>
                   <img 
-                    src={diffData.visualDiff.diffImageUrl} 
+                    src={apiUrl(diffData.visualDiff.diffImageUrl)} 
                     alt="Pixel Diff Highlight" 
                     style={{ maxHeight: '520px', maxWidth: '100%', objectFit: 'contain', borderRadius: '6px' }}
                   />

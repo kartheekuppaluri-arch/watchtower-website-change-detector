@@ -9,6 +9,7 @@ import ArchitecturalQnModal from './components/ArchitecturalQnModal';
 import AlertSettingsModal from './components/AlertSettingsModal';
 import TestStudio from './components/TestStudio';
 import { Plus, Globe, RefreshCw } from 'lucide-react';
+import { apiFetch } from './api';
 
 export default function App() {
   const [monitors, setMonitors] = useState([]);
@@ -22,7 +23,7 @@ export default function App() {
 
   // Fetch monitors
   const loadMonitors = () => {
-    return fetch('/api/monitors')
+    return apiFetch('/api/monitors')
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -46,7 +47,7 @@ export default function App() {
   // Check single monitor
   const handleCheckNow = async (monitorId) => {
     try {
-      const res = await fetch(`/api/monitors/${monitorId}/check`, { method: 'POST' });
+      const res = await apiFetch(`/api/monitors/${monitorId}/check`, { method: 'POST' });
       const data = await res.json();
       await loadMonitors();
       return data;
@@ -59,7 +60,7 @@ export default function App() {
   const handleRunAll = async () => {
     setIsRunningAll(true);
     try {
-      await fetch('/api/monitors/check-all', { method: 'POST' });
+      await apiFetch('/api/monitors/check-all', { method: 'POST' });
       await loadMonitors();
     } catch (e) {
       console.error('Run all failed:', e);
@@ -72,14 +73,14 @@ export default function App() {
   const handleSaveMonitor = async (data) => {
     if (selectedMonitor) {
       // Update
-      await fetch(`/api/monitors/${selectedMonitor.id}`, {
+      await apiFetch(`/api/monitors/${selectedMonitor.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
     } else {
       // Create
-      await fetch('/api/monitors', {
+      await apiFetch('/api/monitors', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
@@ -91,7 +92,7 @@ export default function App() {
   // Delete monitor
   const handleDeleteMonitor = async (id) => {
     if (!window.confirm('Are you sure you want to delete this monitor?')) return;
-    await fetch(`/api/monitors/${id}`, { method: 'DELETE' });
+    await apiFetch(`/api/monitors/${id}`, { method: 'DELETE' });
     await loadMonitors();
   };
 
@@ -193,7 +194,7 @@ export default function App() {
           monitor={selectedMonitor}
           onClose={closeModal}
           onSave={async (patch) => {
-            await fetch(`/api/monitors/${selectedMonitor.id}`, {
+            await apiFetch(`/api/monitors/${selectedMonitor.id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(patch)

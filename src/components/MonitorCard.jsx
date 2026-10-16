@@ -15,6 +15,7 @@ import {
   ShieldAlert, 
   Tag 
 } from 'lucide-react';
+import { apiUrl } from '../api';
 
 export default function MonitorCard({ 
   monitor, 
@@ -67,7 +68,7 @@ export default function MonitorCard({
           <div>
             <div className="monitor-name">{monitor.name}</div>
             <a 
-              href={monitor.url} 
+              href={apiUrl(monitor.url)} 
               target="_blank" 
               rel="noreferrer" 
               className="monitor-url"
@@ -197,7 +198,7 @@ export default function MonitorCard({
           </button>
 
           <a 
-            href={`/api/monitors/${monitor.id}/rss`} 
+            href={apiUrl(`/api/monitors/${monitor.id}/rss`)} 
             target="_blank" 
             rel="noreferrer" 
             className="btn btn-secondary btn-sm"

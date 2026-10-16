@@ -9,6 +9,7 @@ import {
   Sparkles, 
   ShieldCheck 
 } from 'lucide-react';
+import { apiFetch, apiUrl } from '../api';
 
 export default function VisualPickerModal({ monitor, onClose, onSave }) {
   const [url, setUrl] = useState(monitor?.url || '');
@@ -33,7 +34,7 @@ export default function VisualPickerModal({ monitor, onClose, onSave }) {
   const inspectPage = () => {
     if (!url) return;
     setLoading(true);
-    fetch('/api/picker/inspect', {
+    apiFetch('/api/picker/inspect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url })
@@ -139,7 +140,7 @@ export default function VisualPickerModal({ monitor, onClose, onSave }) {
                   {screenshotUrl ? (
                     <div style={{ textAlign: 'center' }}>
                       <img 
-                        src={screenshotUrl} 
+                        src={apiUrl(screenshotUrl)} 
                         alt="Target Screenshot" 
                         style={{ maxWidth: '100%', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.1)' }}
                       />

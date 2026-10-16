@@ -7,15 +7,9 @@ pages, comparing captured versions, and highlighting changes that may
 matter. It brings together a web dashboard, a crawling and comparison
 pipeline, noise-filtering logic, and monitor history.
 
-> **Project status:** The application runs locally. The Vercel frontend
-> is available as a preview, but monitor API requests currently return a
-> 404, so the hosted version is not yet a reliable end-to-end demo. Use
-> the local setup below to evaluate the application.
-
-**Repository:**
-[GitHub](https://github.com/kartheekuppaluri-arch/watchtower-website-change-detector)\
-**Hosted preview:** [WatchTower on
-Vercel](https://watchtower-website-change-detector.vercel.app/)
+**Live Application (Vercel):** [https://watchtower-website-change-detector.vercel.app/](https://watchtower-website-change-detector.vercel.app/)  
+**Backend API (Render):** [https://watchtower-website-change-detector-v2.onrender.com](https://watchtower-website-change-detector-v2.onrender.com)  
+**Repository:** [GitHub](https://github.com/kartheekuppaluri-arch/watchtower-website-change-detector)
 
 ------------------------------------------------------------------------
 

@@ -10,6 +10,7 @@ import {
   Layers, 
   CheckCircle2 
 } from 'lucide-react';
+import { apiFetch, apiUrl } from '../api';
 
 export default function TimelineModal({ monitor, onClose, onOpenDiff }) {
   const [snapshots, setSnapshots] = useState([]);
@@ -21,8 +22,8 @@ export default function TimelineModal({ monitor, onClose, onOpenDiff }) {
     if (!monitor) return;
     setLoading(true);
     Promise.all([
-      fetch(`/api/monitors/${monitor.id}/snapshots`).then(r => r.json()),
-      fetch(`/api/monitors/${monitor.id}/incidents`).then(r => r.json())
+      apiFetch(`/api/monitors/${monitor.id}/snapshots`).then(r => r.json()),
+      apiFetch(`/api/monitors/${monitor.id}/incidents`).then(r => r.json())
     ])
       .then(([snapData, incData]) => {
         setSnapshots(snapData.snapshots || []);
@@ -130,7 +131,7 @@ export default function TimelineModal({ monitor, onClose, onOpenDiff }) {
                     {/* Screenshot preview button if available */}
                     {s.screenshotUrl && (
                       <a 
-                        href={s.screenshotUrl} 
+                        href={apiUrl(s.screenshotUrl)} 
                         target="_blank" 
                         rel="noreferrer" 
                         className="btn btn-secondary btn-sm"

@@ -11,6 +11,7 @@ import {
   ShieldAlert, 
   RefreshCw 
 } from 'lucide-react';
+import { apiFetch, apiUrl } from '../api';
 
 export default function TestStudio({ monitors, onCheckNow }) {
   const [loadingAction, setLoadingAction] = useState('');
@@ -23,7 +24,7 @@ export default function TestStudio({ monitors, onCheckNow }) {
   const triggerMockApi = async (key, endpoint) => {
     setLoadingAction(key);
     try {
-      const res = await fetch(endpoint, { method: 'POST' });
+      const res = await apiFetch(endpoint, { method: 'POST' });
       const data = await res.json();
       setActionFeedback(prev => ({ ...prev, [key]: 'Updated mock state! Now run a check.' }));
     } catch (e) {
@@ -59,7 +60,7 @@ export default function TestStudio({ monitors, onCheckNow }) {
               <ShoppingCart size={16} color="var(--cyan-400)" />
               <strong style={{ fontSize: '14px', color: '#f8fafc' }}>E-Commerce Store</strong>
             </div>
-            <a href="/mock/store" target="_blank" rel="noreferrer" className="monitor-url" style={{ fontSize: '11px' }}>
+            <a href={apiUrl('/mock/store')} target="_blank" rel="noreferrer" className="monitor-url" style={{ fontSize: '11px' }}>
               Open Page <ExternalLink size={10} />
             </a>
           </div>
@@ -109,7 +110,7 @@ export default function TestStudio({ monitors, onCheckNow }) {
               <Newspaper size={16} color="var(--violet-400)" />
               <strong style={{ fontSize: '14px', color: '#f8fafc' }}>Tech News Portal</strong>
             </div>
-            <a href="/mock/news" target="_blank" rel="noreferrer" className="monitor-url" style={{ fontSize: '11px' }}>
+            <a href={apiUrl('/mock/news')} target="_blank" rel="noreferrer" className="monitor-url" style={{ fontSize: '11px' }}>
               Open Page <ExternalLink size={10} />
             </a>
           </div>
@@ -152,7 +153,7 @@ export default function TestStudio({ monitors, onCheckNow }) {
               <Activity size={16} color="var(--emerald-400)" />
               <strong style={{ fontSize: '14px', color: '#f8fafc' }}>Status Page (Question 1)</strong>
             </div>
-            <a href="/mock/status" target="_blank" rel="noreferrer" className="monitor-url" style={{ fontSize: '11px' }}>
+            <a href={apiUrl('/mock/status')} target="_blank" rel="noreferrer" className="monitor-url" style={{ fontSize: '11px' }}>
               Open Page <ExternalLink size={10} />
             </a>
           </div>

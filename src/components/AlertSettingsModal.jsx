@@ -8,6 +8,7 @@ import {
   Clock, 
   ExternalLink 
 } from 'lucide-react';
+import { apiFetch } from '../api';
 
 export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
   const [activeTab, setActiveTab] = useState(defaultTab);
@@ -18,12 +19,12 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
   const [testing, setTesting] = useState(false);
 
   useEffect(() => {
-    fetch('/api/alerts/history')
+    apiFetch('/api/alerts/history')
       .then(r => r.json())
       .then(d => setAlerts(d.alerts || []))
       .catch(console.error);
 
-    fetch('/api/digest')
+    apiFetch('/api/digest')
       .then(r => r.json())
       .then(d => setDigest(d.digest || null))
       .catch(console.error);
@@ -33,7 +34,7 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
     if (!testWebhookUrl) return;
     setTesting(true);
     setTestMsg('');
-    fetch('/api/alerts/test-webhook', {
+    apiFetch('/api/alerts/test-webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ webhookUrl: testWebhookUrl, monitorName: 'Live Test Monitor' })
