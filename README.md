@@ -2,13 +2,13 @@
 
 **Track website mutations, pricing changes, and legal updates with zero false alarms.**
 
-WatchTower is a full-stack, production-grade web application for monitoring public websites, comparing captured versions with Myers semantic diffs and pixel-level visual comparison, and highlighting critical changes that matter. It combines an interactive React dashboard, a cinematic 3D product showcase, a resilient crawling pipeline (Headless Chromium + Cheerio fallback), deterministic 3-layer noise scrubbing, and real-time alert dispatching (Discord, Telegram, RSS, and Daily Digest).
-
-[![WatchTower Runtime Pipeline Architecture](public/architecture-pipeline.jpg)](public/architecture-pipeline.jpg)
-
 - **Live Application (Vercel):** [https://watchtower-website-change-detector.vercel.app/](https://watchtower-website-change-detector.vercel.app/)  
 - **Production Backend API (Render):** [https://watchtower-website-change-detector-v2.onrender.com](https://watchtower-website-change-detector-v2.onrender.com)  
-- **Repository:** [GitHub](https://github.com/kartheekuppaluri-arch/watchtower-website-change-detector)
+- **GitHub Repository:** [https://github.com/kartheekuppaluri-arch/watchtower-website-change-detector](https://github.com/kartheekuppaluri-arch/watchtower-website-change-detector)
+
+---
+
+WatchTower is a full-stack, production-grade web application for monitoring public websites, comparing captured versions with Myers semantic diffs and pixel-level visual comparison, and highlighting critical changes that matter. It combines an interactive React dashboard, a cinematic 3D product showcase, a resilient crawling pipeline (Headless Chromium + Cheerio fallback), deterministic 3-layer noise scrubbing, and real-time alert dispatching (Discord, Telegram, RSS, and Daily Digest).
 
 ---
 
@@ -29,43 +29,17 @@ WatchTower solves these challenges with a verified 8-stage runtime pipeline:
 
 ## 8-Stage Runtime Pipeline Architecture
 
-```
-1. Target URL Config    -->  2. Domain Queue & Coalescing   -->  3. Crawl Pipeline
-   [URL, WatchSelector,         DomainRateLimiter (1/host)          Primary: Puppeteer (Headless Chrome)
-    IgnoreRules, Cadence]       FetchDeduplicator (1 in-flight)     Fallback: Cheerio HTTP Fetch
-                                          |                                   |
-                                          +-----------------+-----------------+
-                                                            |
-                                                            v
-4. Incident Classifier  <--  [HTTP Status, Raw HTML, Viewport Screenshot PNG]
-   Inspect for Outage (5xx) or WAF / CAPTCHA Challenge (Turnstile / Cloudflare / 403)
-     |--> YES: Log Incident Event -> Suppress Snapshot -> Mark ERROR/BLOCKED (NO FALSE ALARM)
-     v--> NO: Continue to Content Pipeline
-                                                            |
-                                                            v
-5. Noise Scrubbing Engine
-   Layer A: Prune <script>, <style>, <iframe>, and user ignoreSelectors (.banner, #clock)
-   Layer B: Regex filter ISO timestamps, relative dates ("3m ago"), UUIDs, session tokens
-   Layer C: Whitespace normalization and line breaks collapse
-                                                            |
-                                                            v
-6. Differential Analysis
-   - SHA-256 Hash Generation: crypto.createHash('sha256') on cleaned text
-   - Hash Equality Check: If currentHash === previousHash -> No change, terminate cycle
-   - Myers Diff Algorithm: Compute line-by-line & word-by-word diffs (Added / Removed)
-   - Sensitivity Gating: Evaluate threshold (High: 0.5%, Medium: 4%, Low: 15% change)
-   - Visual Diff: pixelmatch compares old and new PNGs -> Generates diff overlay mask
-                                                            |
-                                                            v
-7. Persistence & History Store
-   Write immutable snapshot record { id, timestamp, hash, text, diffStats, screenshotUrl }
-                                                            |
-                                                            v
-8. Alert Dispatcher & Feed Distribution
-   - Discord & Telegram Webhooks (Keyed by monitorId-contentHash to eliminate duplicates)
-   - 24-Hour Daily Change Digest generator
-   - Per-Monitor RSS XML Feed (/api/monitors/:id/rss)
-```
+[![WatchTower Runtime Pipeline Architecture](public/architecture-pipeline.jpg)](public/architecture-pipeline.jpg)
+
+The verified 8-stage verification pipeline executes in strict sequential order:
+1. **Target URL Config** — Monitor configuration, target URLs, crawl settings (`WatchSelector`, `ignoreSelectors`, cadence).
+2. **Domain Queue & Coalescing** — `DomainRateLimiter` (1 per hostname, 1500ms delay) & `FetchDeduplicator` (coalesces duplicate in-flight crawls).
+3. **Crawl Pipeline** — Puppeteer Headless Chromium (1280×800 viewport), screenshot capture, and Cheerio HTTP fallback.
+4. **Incident Classifier** — Inspects for HTTP 5xx outages and Cloudflare/Turnstile/CAPTCHA challenges; branches to **Log Incident Event** & **Suppress Snapshot (No False Alarm)** or continues to content scrubbing.
+5. **Noise Scrubbing Engine** — 3 deterministic layers: Layer A (DOM pruning), Layer B (regex date/token filter), and Layer C (whitespace collapse).
+6. **Differential Analysis** — SHA-256 fingerprinting, hash equality short-circuit (<1ms), Myers line/word diffing, sensitivity gating, and pixelmatch visual overlay masks.
+7. **Persistence & History Store** — Writes immutable snapshot record (`id`, `timestamp`, `hash`, `text`, `diffStats`, `screenshotUrl`).
+8. **Alert Dispatcher & Feed Distribution** — Discord & Telegram webhooks (hash-deduplicated), 24-hour daily change digests, and per-monitor RSS feeds (`/api/monitors/:id/rss`).
 
 ---
 
