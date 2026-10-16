@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Globe, ArrowRight, Server, Sliders, Database, ArrowDown } from 'lucide-react';
+import { Globe, ArrowRight, Server, Sliders, Database, ArrowDown, ExternalLink, Sparkles } from 'lucide-react';
 
 const architectureLayers = [
   {
@@ -109,39 +109,62 @@ export default function ArchitectureFlow() {
           })}
         </div>
 
-        {/* Real ASCII Dataflow Blueprint */}
+        {/* Full WatchTower Runtime Pipeline Architecture Blueprint Image */}
         <div style={{
-          maxWidth: '860px',
-          margin: '40px auto 0',
-          background: '#070a12',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: '12px',
+          maxWidth: '1060px',
+          margin: '48px auto 0',
+          background: 'rgba(10, 15, 26, 0.85)',
+          border: '1px solid rgba(56, 189, 248, 0.25)',
+          borderRadius: '16px',
           padding: '24px',
-          fontFamily: 'var(--font-mono)',
-          fontSize: '12px',
-          lineHeight: '1.6',
-          color: '#cbd5e1',
-          overflowX: 'auto'
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(56, 189, 248, 0.1)',
+          overflow: 'hidden'
         }}>
-          <div style={{ color: 'var(--cyan-400)', fontWeight: 600, marginBottom: '10px' }}>
-            // VERIFIED RUNTIME DATAFLOW BLUEPRINT
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--cyan-400)', boxShadow: '0 0 8px var(--cyan-400)' }} />
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--cyan-400)', fontWeight: 600 }}>
+                WATCHTOWER RUNTIME PIPELINE ARCHITECTURE (8 VERIFIED STAGES)
+              </span>
+            </div>
+            <a 
+              href="/architecture-pipeline.jpg" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{
+                fontSize: '12px',
+                color: 'var(--text-muted)',
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <span>View Full Resolution</span>
+              <ExternalLink size={12} />
+            </a>
           </div>
-{`[Target Webpage] ---> (Headless Chromium Crawl Engine)
-                           |
-                           v
-               [CSS Scoped Selector Isolation]
-                           |
-                           v
-          [4-Layer Noise Scrubber (Regex & Selectors)]
-                           |
-                           v
-          [Myers Text Diffing & Pixelmatch Visual]
-                           |
-              +------------+------------+
-              |                         |
-              v                         v
-    (Snapshot Repository)      (Webhook Event & Digest)
-    [SHA-256 Content Hash]     [Slack / Discord / JSON]`}
+
+          <div style={{ 
+            borderRadius: '10px', 
+            overflow: 'hidden', 
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            background: '#ffffff'
+          }}>
+            <img 
+              src="/architecture-pipeline.jpg" 
+              alt="WatchTower Runtime Pipeline Architecture Blueprint Diagram" 
+              style={{ 
+                width: '100%', 
+                height: 'auto', 
+                display: 'block' 
+              }}
+              loading="lazy"
+            />
+          </div>
+          <div style={{ marginTop: '12px', fontSize: '12px', color: 'var(--text-dim)', textAlign: 'center' }}>
+            Complete 8-stage verification pipeline: Target URL Config → Domain Queue & Coalescing → Crawl Pipeline → Incident Classifier → Noise Scrubbing Engine → Differential Analysis → Persistence & History Store → Alert Dispatcher & Feed Distribution.
+          </div>
         </div>
 
       </div>

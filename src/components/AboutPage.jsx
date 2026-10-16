@@ -94,46 +94,60 @@ export default function AboutPage({ onBackToDashboard }) {
           Every monitoring cycle traverses an 8-stage verification pipeline designed to avoid false alarms, mitigate thundering herd problems, and generate human-readable diff summaries.
         </p>
 
-        <div className="about-diagram-box">
-{`+---------------------------------------------------------------------------------------------------+
-|                                 WATCHTOWER RUNTIME PIPELINE                                       |
-+---------------------------------------------------------------------------------------------------+
+        <div style={{
+          background: 'rgba(10, 15, 26, 0.85)',
+          border: '1px solid rgba(56, 189, 248, 0.25)',
+          borderRadius: '16px',
+          padding: '24px',
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(56, 189, 248, 0.1)',
+          overflow: 'hidden',
+          marginBottom: '24px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--cyan-400)', boxShadow: '0 0 8px var(--cyan-400)' }} />
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--cyan-400)', fontWeight: 600 }}>
+                WATCHTOWER RUNTIME PIPELINE ARCHITECTURE (8 VERIFIED STAGES)
+              </span>
+            </div>
+            <a 
+              href="/architecture-pipeline.jpg" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{
+                fontSize: '12px',
+                color: 'var(--text-muted)',
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <span>View Full Resolution</span>
+              <ExternalLink size={12} />
+            </a>
+          </div>
 
- 1. Target URL Config    -->  2. Domain Queue & Coalescing   -->  3. Crawl Pipeline
-    [URL, WatchSelector,         DomainRateLimiter (1/host)          Primary: Puppeteer (Headless Chrome)
-     IgnoreRules, Regex]         FetchDeduplicator (1 in-flight)     Fallback: Cheerio HTTP Fetch
-                                           |                                   |
-                                           +-----------------+-----------------+
-                                                             |
-                                                             v
- 4. Incident Classifier  <--  [HTTP Status, Raw HTML, Viewport Screenshot PNG]
-    Inspect for Outage (5xx) or WAF / CAPTCHA Challenge (Turnstile / Cloudflare / 403)
-      |--> YES: Log Incident Event -> Suppress Snapshot -> Mark ERROR/BLOCKED (NO FALSE ALARM)
-      v--> NO: Continue to Content Pipeline
-                                                             |
-                                                             v
- 5. Noise Scrubbing Engine
-    Layer A: Prune <script>, <style>, <iframe>, and user ignoreSelectors (.banner, #clock)
-    Layer B: Regex filter ISO timestamps, relative dates ("3m ago"), UUIDs, session tokens
-    Layer C: Whitespace normalization and line breaks collapse
-                                                             |
-                                                             v
- 6. Differential Analysis
-    - SHA-256 Hash Generation: Crypto.createHash('sha256') on cleaned text
-    - Hash Equality Check: If currentHash === previousHash -> No change, terminate cycle
-    - Myers Diff Algorithm: Compute line-by-line & word-by-word diffs (Added / Removed)
-    - Sensitivity Gating: Evaluate threshold (High: 0.5%, Medium: 4%, Low: 15% change)
-    - Visual Diff: pixelmatch compares old and new PNGs -> Generates diff overlay mask
-                                                             |
-                                                             v
- 7. Persistence & History Store
-    Write immutable snapshot record { id, timestamp, hash, text, diffStats, screenshotUrl }
-                                                             |
-                                                             v
- 8. Alert Dispatcher & Feed Distribution
-    - Discord & Telegram Webhooks (Keyed by monitorId-contentHash to eliminate duplicates)
-    - 24-Hour Daily Change Digest generator
-    - Per-Monitor RSS XML Feed (/api/monitors/:id/rss)`}
+          <div style={{ 
+            borderRadius: '10px', 
+            overflow: 'hidden', 
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            background: '#ffffff'
+          }}>
+            <img 
+              src="/architecture-pipeline.jpg" 
+              alt="WatchTower Runtime Pipeline Architecture Blueprint Diagram" 
+              style={{ 
+                width: '100%', 
+                height: 'auto', 
+                display: 'block' 
+              }}
+              loading="lazy"
+            />
+          </div>
+          <div style={{ marginTop: '12px', fontSize: '12px', color: 'var(--text-dim)', textAlign: 'center' }}>
+            Complete 8-stage verification pipeline: Target URL Config → Domain Queue & Coalescing → Crawl Pipeline → Incident Classifier → Noise Scrubbing Engine → Differential Analysis → Persistence & History Store → Alert Dispatcher & Feed Distribution.
+          </div>
         </div>
       </section>
 
