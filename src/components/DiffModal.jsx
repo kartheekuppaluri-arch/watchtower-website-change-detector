@@ -90,22 +90,38 @@ export default function DiffModal({ monitor, onClose }) {
     };
   }, [isDragging]);
 
+  // Lock background scroll and add Escape listener while modal is open
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   const snapA = diffData?.snapA;
   const snapB = diffData?.snapB;
   const stats = diffData?.textDiff?.stats || { addedLines: 0, removedLines: 0, changedPercent: 0 };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
       <div className="modal-content wide" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="modal-header">
           <div>
             <div className="modal-title">Diff & Version Comparison Engine</div>
             <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              {monitor.name} • <span style={{ color: 'var(--cyan-400)' }}>{monitor.url}</span>
+              {monitor.name} • <span style={{ color: 'var(--accent-primary)', fontFamily: 'var(--font-mono)' }}>{monitor.url}</span>
             </div>
           </div>
-          <button className="close-btn" onClick={onClose}><X size={20} /></button>
+          <button className="close-btn" onClick={onClose} aria-label="Close dialog"><X size={18} /></button>
         </div>
 
         {/* Body */}
@@ -392,11 +408,11 @@ export default function DiffModal({ monitor, onClose }) {
                         </span>
                         <div style={{ 
                           width: '100%', 
-                          maxWidth: '44px',
+                          maxWidth: '44px', 
                           height: `${heightPercent}%`, 
-                          background: 'linear-gradient(180deg, var(--cyan-400), #0284c7)', 
-                          borderRadius: '6px 6px 0 0',
-                          boxShadow: '0 0 10px rgba(14, 165, 233, 0.3)'
+                          background: 'var(--accent-primary)', 
+                          borderRadius: '4px 4px 0 0',
+                          opacity: 0.9
                         }} />
                         <span style={{ fontSize: '10px', color: 'var(--text-dim)', textAlign: 'center' }}>
                           v{snapshots.length - idx}

@@ -28,6 +28,22 @@ export default function AddMonitorModal({ monitor, onClose, onSave }) {
   const [testingWebhook, setTestingWebhook] = useState(false);
   const [webhookTestMsg, setWebhookTestMsg] = useState('');
 
+  // Lock background scroll and add Escape listener while modal is open
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   const fillMock = (type) => {
     if (type === 'store') {
       setName('TechGadget Headphones (Price & Stock)');
@@ -103,8 +119,9 @@ export default function AddMonitorModal({ monitor, onClose, onSave }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
       <div className="modal-content" onClick={e => e.stopPropagation()}>
+        {/* Pinned Header */}
         <div className="modal-header">
           <div>
             <div className="modal-title">{monitor ? 'Edit Monitor' : 'Create New Website Monitor'}</div>
@@ -112,10 +129,12 @@ export default function AddMonitorModal({ monitor, onClose, onSave }) {
               Headless browser change tracking with noise scrubbing & instant notifications
             </div>
           </div>
-          <button className="close-btn" onClick={onClose}><X size={20} /></button>
+          <button className="close-btn" onClick={onClose} aria-label="Close dialog"><X size={20} /></button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        {/* Constrained Flex Form */}
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: '1 1 auto', minHeight: 0, overflow: 'hidden' }}>
+          {/* Independently Scrollable Modal Body */}
           <div className="modal-body">
             {/* Quick Presets */}
             {!monitor && (
@@ -129,7 +148,7 @@ export default function AddMonitorModal({ monitor, onClose, onSave }) {
                 <span style={{ fontSize: '11px', color: 'var(--cyan-400)', fontWeight: 700, textTransform: 'uppercase' }}>
                   Quick Fill Test Targets:
                 </span>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => fillMock('store')}>
                     🛒 E-Commerce Store
                   </button>
@@ -258,7 +277,7 @@ export default function AddMonitorModal({ monitor, onClose, onSave }) {
                   placeholder="e.g. \d{1,2}:\d{2}:\d{2}\s*(?:AM|PM)" 
                 />
                 <div className="form-helper">
-                  Strippes dynamic dates, clock ticks, or session tokens matching this regular expression.
+                  Strips dynamic dates, clock ticks, or session tokens matching this regular expression.
                 </div>
               </div>
             </div>
@@ -346,6 +365,7 @@ export default function AddMonitorModal({ monitor, onClose, onSave }) {
             </div>
           </div>
 
+          {/* Pinned Footer (Always visible at 100% zoom) */}
           <div className="modal-footer">
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary">

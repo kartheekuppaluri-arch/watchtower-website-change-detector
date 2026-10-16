@@ -8,15 +8,31 @@ import {
   Hash, 
   ArrowRight, 
   Layers, 
-  CheckCircle2 
+  CheckCircle2,
+  Info
 } from 'lucide-react';
 import { apiFetch, apiUrl } from '../api';
 
 export default function TimelineModal({ monitor, onClose, onOpenDiff }) {
   const [snapshots, setSnapshots] = useState([]);
   const [incidents, setIncidents] = useState([]);
-  const [activeTab, setActiveTab] = useState('snapshots'); // 'snapshots', 'incidents'
+  const [activeTab, setActiveTab] = useState('snapshots');
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
 
   useEffect(() => {
     if (!monitor) return;
@@ -34,7 +50,7 @@ export default function TimelineModal({ monitor, onClose, onOpenDiff }) {
   }, [monitor]);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div>
@@ -43,7 +59,7 @@ export default function TimelineModal({ monitor, onClose, onOpenDiff }) {
               {monitor.name} ({snapshots.length} Snapshots • {incidents.length} Outage/Block Events)
             </div>
           </div>
-          <button className="close-btn" onClick={onClose}><X size={20} /></button>
+          <button className="close-btn" onClick={onClose} aria-label="Close dialog"><X size={18} /></button>
         </div>
 
         <div className="modal-body">
@@ -53,29 +69,29 @@ export default function TimelineModal({ monitor, onClose, onOpenDiff }) {
               className={`diff-tab ${activeTab === 'snapshots' ? 'active' : ''}`}
               onClick={() => setActiveTab('snapshots')}
             >
-              <History size={13} style={{ display: 'inline', marginRight: 4 }} />
+              <History size={13} style={{ display: 'inline', marginRight: 5 }} />
               Content Snapshots ({snapshots.length})
             </button>
             <button 
               className={`diff-tab ${activeTab === 'incidents' ? 'active' : ''}`}
               onClick={() => setActiveTab('incidents')}
             >
-              <ShieldAlert size={13} style={{ display: 'inline', marginRight: 4 }} />
+              <ShieldAlert size={13} style={{ display: 'inline', marginRight: 5 }} />
               Outage / CAPTCHA Incidents ({incidents.length})
             </button>
           </div>
 
           {/* SNAPSHOTS TAB */}
           {activeTab === 'snapshots' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {snapshots.map((s, idx) => (
                 <div 
                   key={s.id}
                   style={{
-                    background: '#131c2e',
+                    background: 'var(--bg-elevated)',
                     border: '1px solid var(--border-subtle)',
-                    borderRadius: '10px',
-                    padding: '14px 18px',
+                    borderRadius: '6px',
+                    padding: '12px 16px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -83,52 +99,50 @@ export default function TimelineModal({ monitor, onClose, onOpenDiff }) {
                     gap: '12px'
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     {/* Version Badge */}
                     <div style={{ 
-                      width: '40px', 
-                      height: '40px', 
-                      borderRadius: '8px', 
-                      background: 'rgba(56, 189, 248, 0.15)', 
-                      border: '1px solid rgba(56, 189, 248, 0.3)',
-                      color: 'var(--cyan-400)',
-                      fontWeight: 800,
+                      width: '36px', 
+                      height: '36px', 
+                      borderRadius: '6px', 
+                      background: 'var(--accent-subtle)', 
+                      border: '1px solid var(--accent-border)',
+                      color: 'var(--accent-primary)',
+                      fontWeight: 700,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '14px'
+                      fontSize: '13px'
                     }}>
                       v{snapshots.length - idx}
                     </div>
 
                     <div>
-                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#ffffff' }}>
+                      <div style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-main)' }}>
                         {s.summary || 'Snapshot captured'}
                       </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-dim)', display: 'flex', gap: '10px', marginTop: '3px' }}>
-                        <span>🕒 {new Date(s.timestamp).toLocaleString()}</span>
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-dim)', display: 'flex', gap: '8px', marginTop: '2px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span>{new Date(s.timestamp).toLocaleString()}</span>
                         <span>•</span>
-                        <code>Hash: {s.contentHash.slice(0, 8)}</code>
+                        <code className="code-pill">Hash: {s.contentHash.slice(0, 8)}</code>
                         {s.numberValue !== null && (
                           <>
                             <span>•</span>
-                            <span style={{ color: 'var(--emerald-400)', fontWeight: 600 }}>Value: ${s.numberValue}</span>
+                            <span style={{ color: 'var(--status-ok)', fontWeight: 600 }}>Value: ${s.numberValue}</span>
                           </>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {/* Diff stats */}
-                    <span style={{ fontSize: '12px', color: '#34d399', fontWeight: 600 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--status-ok)', fontWeight: 600 }}>
                       +{s.diffStats?.addedLines || 0}
                     </span>
-                    <span style={{ fontSize: '12px', color: '#f87171', fontWeight: 600 }}>
+                    <span style={{ fontSize: '12px', color: 'var(--status-error)', fontWeight: 600 }}>
                       -{s.diffStats?.removedLines || 0}
                     </span>
 
-                    {/* Screenshot preview button if available */}
                     {s.screenshotUrl && (
                       <a 
                         href={apiUrl(s.screenshotUrl)} 
@@ -154,7 +168,7 @@ export default function TimelineModal({ monitor, onClose, onOpenDiff }) {
               ))}
 
               {snapshots.length === 0 && (
-                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-dim)' }}>
+                <div style={{ padding: '36px', textAlign: 'center', color: 'var(--text-dim)' }}>
                   No snapshots captured yet.
                 </div>
               )}
@@ -163,42 +177,50 @@ export default function TimelineModal({ monitor, onClose, onOpenDiff }) {
 
           {/* INCIDENTS TAB */}
           {activeTab === 'incidents' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ 
-                background: 'rgba(56, 189, 248, 0.1)', 
-                border: '1px solid rgba(56, 189, 248, 0.2)', 
-                borderRadius: '8px', 
-                padding: '12px', 
-                fontSize: '12.5px', 
-                color: '#93c5fd' 
+                background: 'var(--bg-elevated)', 
+                border: '1px solid var(--border-subtle)', 
+                borderRadius: '6px', 
+                padding: '12px 14px', 
+                fontSize: '12px', 
+                color: 'var(--text-muted)',
+                lineHeight: 1.5,
+                display: 'flex',
+                gap: '8px',
+                alignItems: 'flex-start'
               }}>
-                ℹ️ <strong>Outage & CAPTCHA Shield:</strong> These events represent site outages, Cloudflare challenges, or bot barriers. They are isolated here and <strong>suppressed from false content change alerts</strong> to preserve snapshot integrity.
+                <Info size={16} color="var(--accent-primary)" style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  <strong style={{ color: 'var(--text-main)' }}>Outage & CAPTCHA Shield:</strong> These events represent site outages, Cloudflare challenges, or bot barriers. They are isolated here and <strong style={{ color: 'var(--text-main)' }}>suppressed from false content change alerts</strong> to preserve snapshot integrity.
+                </span>
               </div>
 
               {incidents.map((inc) => (
                 <div 
                   key={inc.id}
                   style={{
-                    background: '#131c2e',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    borderRadius: '10px',
-                    padding: '14px 18px',
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--status-error-border)',
+                    borderRadius: '6px',
+                    padding: '12px 16px',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between'
+                    justifyContent: 'space-between',
+                    gap: '12px'
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{ 
-                      background: 'rgba(239, 68, 68, 0.2)', 
-                      padding: '8px', 
-                      borderRadius: '8px', 
-                      color: 'var(--rose-400)' 
+                      background: 'var(--status-error-bg)', 
+                      padding: '6px', 
+                      borderRadius: '6px', 
+                      color: 'var(--status-error)' 
                     }}>
-                      <ShieldAlert size={18} />
+                      <ShieldAlert size={16} />
                     </div>
                     <div>
-                      <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#fca5a5' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--status-error)' }}>
                         [{inc.type}] {inc.message}
                       </div>
                       <div style={{ fontSize: '11.5px', color: 'var(--text-dim)', marginTop: '2px' }}>
@@ -211,7 +233,7 @@ export default function TimelineModal({ monitor, onClose, onOpenDiff }) {
               ))}
 
               {incidents.length === 0 && (
-                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-dim)' }}>
+                <div style={{ padding: '36px', textAlign: 'center', color: 'var(--text-dim)' }}>
                   No outage or CAPTCHA incidents recorded for this monitor. Clean health!
                 </div>
               )}

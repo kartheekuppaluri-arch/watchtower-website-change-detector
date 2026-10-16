@@ -78,8 +78,23 @@ export default function VisualPickerModal({ monitor, onClose, onSave }) {
     onClose();
   };
 
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
       <div className="modal-content wide" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="modal-header">
@@ -89,7 +104,7 @@ export default function VisualPickerModal({ monitor, onClose, onSave }) {
               Point-and-click to select regions to watch (CSS selector) and regions to ignore (noise elements)
             </div>
           </div>
-          <button className="close-btn" onClick={onClose}><X size={20} /></button>
+          <button className="close-btn" onClick={onClose} aria-label="Close dialog"><X size={18} /></button>
         </div>
 
         {/* Body */}

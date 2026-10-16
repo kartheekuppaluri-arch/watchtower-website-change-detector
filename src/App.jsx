@@ -8,6 +8,8 @@ import TimelineModal from './components/TimelineModal';
 import ArchitecturalQnModal from './components/ArchitecturalQnModal';
 import AlertSettingsModal from './components/AlertSettingsModal';
 import TestStudio from './components/TestStudio';
+import AboutPage from './components/AboutPage';
+import LandingPage from './components/landing/LandingPage';
 import { Plus, Globe, RefreshCw } from 'lucide-react';
 import { apiFetch } from './api';
 
@@ -15,11 +17,54 @@ export default function App() {
   const [monitors, setMonitors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isRunningAll, setIsRunningAll] = useState(false);
-  const [testStudioOpen, setTestStudioOpen] = useState(true); // Open by default for instant testing
+  const [testStudioOpen, setTestStudioOpen] = useState(true);
+
+  // View state: 'landing' (Default public experience) | 'dashboard' | 'about'
+  const [activeView, setActiveView] = useState(() => {
+    const hash = window.location.hash;
+    const pathname = window.location.pathname;
+    if (hash === '#dashboard' || pathname === '/dashboard') return 'dashboard';
+    if (hash === '#about' || pathname === '/about') return 'about';
+    return 'landing'; // Default public landing page!
+  });
 
   // Modals
   const [activeModal, setActiveModal] = useState(null); // 'add', 'diff', 'picker', 'timeline', 'faq', 'alerts', 'digest'
   const [selectedMonitor, setSelectedMonitor] = useState(null);
+
+  // Listen to hash and popstate changes for seamless browser navigation
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const hash = window.location.hash;
+      const pathname = window.location.pathname;
+      if (hash === '#about' || pathname === '/about') {
+        setActiveView('about');
+      } else if (hash === '#dashboard' || pathname === '/dashboard') {
+        setActiveView('dashboard');
+      } else {
+        setActiveView('landing');
+      }
+    };
+    window.addEventListener('hashchange', handleUrlChange);
+    window.addEventListener('popstate', handleUrlChange);
+    return () => {
+      window.removeEventListener('hashchange', handleUrlChange);
+      window.removeEventListener('popstate', handleUrlChange);
+    };
+  }, []);
+
+  const handleSelectView = (view) => {
+    setActiveView(view);
+    if (view === 'about') {
+      window.location.hash = 'about';
+    } else if (view === 'dashboard') {
+      window.location.hash = 'dashboard';
+    } else {
+      if (window.location.hash) {
+        history.pushState(null, '', window.location.pathname);
+      }
+    }
+  };
 
   // Fetch monitors
   const loadMonitors = () => {
@@ -107,11 +152,19 @@ export default function App() {
     setSelectedMonitor(null);
   };
 
+  if (activeView === 'landing') {
+    return (
+      <LandingPage onStartMonitoring={() => handleSelectView('dashboard')} />
+    );
+  }
+
   return (
     <div className="app-container">
-      {/* Top Header & Metrics */}
+      {/* Top Header, Brand & Controls */}
       <Header 
         monitors={monitors}
+        activeView={activeView}
+        onSelectView={handleSelectView}
         onAddMonitor={() => openModal('add')}
         onRunAllChecks={handleRunAll}
         isRunningAll={isRunningAll}
@@ -123,60 +176,66 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main style={{ marginTop: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div>
-            <h2 style={{ fontSize: '18px', color: '#f8fafc' }}>
-              Monitored Target Pages
-            </h2>
-            <p style={{ fontSize: '12px', color: 'var(--text-dim)' }}>
-              Headless browser rendering with SHA-256 content hashes, visual diffs and noise filters
-            </p>
-          </div>
+      <main style={{ marginTop: '20px' }}>
+        {activeView === 'about' ? (
+          <AboutPage onBackToDashboard={() => handleSelectView('dashboard')} />
+        ) : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <h2 style={{ fontSize: '17px', color: 'var(--text-main)', fontWeight: 600 }}>
+                  Monitored Target Pages
+                </h2>
+                <p style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
+                  Headless browser rendering with SHA-256 content hashes, visual diffs and noise filters
+                </p>
+              </div>
 
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button className="btn btn-secondary btn-sm" onClick={loadMonitors}>
-              <RefreshCw size={12} /> Refresh Grid
-            </button>
-          </div>
-        </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn btn-secondary btn-sm" onClick={loadMonitors}>
+                  <RefreshCw size={12} /> Refresh Grid
+                </button>
+              </div>
+            </div>
 
-        {/* Monitors Grid */}
-        <div className="monitors-grid">
-          {monitors.map(m => (
-            <MonitorCard 
-              key={m.id}
-              monitor={m}
-              onCheckNow={handleCheckNow}
-              onOpenDiff={(mon) => openModal('diff', mon)}
-              onOpenTimeline={(mon) => openModal('timeline', mon)}
-              onOpenVisualPicker={(mon) => openModal('picker', mon)}
-              onEdit={(mon) => openModal('add', mon)}
-              onDelete={handleDeleteMonitor}
-            />
-          ))}
-        </div>
+            {/* Monitors Grid */}
+            <div className="monitors-grid">
+              {monitors.map(m => (
+                <MonitorCard 
+                  key={m.id}
+                  monitor={m}
+                  onCheckNow={handleCheckNow}
+                  onOpenDiff={(mon) => openModal('diff', mon)}
+                  onOpenTimeline={(mon) => openModal('timeline', mon)}
+                  onOpenVisualPicker={(mon) => openModal('picker', mon)}
+                  onEdit={(mon) => openModal('add', mon)}
+                  onDelete={handleDeleteMonitor}
+                />
+              ))}
+            </div>
 
-        {/* Empty State */}
-        {monitors.length === 0 && !loading && (
-          <div className="glass-panel" style={{ padding: '60px', textAlign: 'center' }}>
-            <Globe size={48} color="var(--cyan-400)" style={{ margin: '0 auto 16px' }} />
-            <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>No Monitors Configured</h3>
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '18px', maxWidth: '420px', margin: '0 auto 18px' }}>
-              Add a target website URL to begin automated change detection, noise scrubbing, and alert delivery.
-            </p>
-            <button className="btn btn-primary" onClick={() => openModal('add')}>
-              <Plus size={16} /> Create Your First Monitor
-            </button>
-          </div>
-        )}
+            {/* Empty State */}
+            {monitors.length === 0 && !loading && (
+              <div className="glass-panel" style={{ padding: '60px 24px', textAlign: 'center' }}>
+                <Globe size={40} color="var(--accent-primary)" style={{ margin: '0 auto 16px' }} />
+                <h3 style={{ fontSize: '17px', marginBottom: '8px', color: 'var(--text-main)' }}>No Monitors Configured</h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '18px', maxWidth: '420px', margin: '0 auto 18px' }}>
+                  Add a target website URL to begin automated change detection, noise scrubbing, and alert delivery.
+                </p>
+                <button className="btn btn-primary" onClick={() => openModal('add')}>
+                  <Plus size={15} /> Create Your First Monitor
+                </button>
+              </div>
+            )}
 
-        {/* Interactive Testing Studio Drawer / Section */}
-        {testStudioOpen && (
-          <TestStudio 
-            monitors={monitors} 
-            onCheckNow={handleCheckNow} 
-          />
+            {/* Interactive Testing Studio Drawer / Section */}
+            {testStudioOpen && (
+              <TestStudio 
+                monitors={monitors} 
+                onCheckNow={handleCheckNow} 
+              />
+            )}
+          </>
         )}
       </main>
 

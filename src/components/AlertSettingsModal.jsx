@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   X, 
-  BellRing, 
+  Bell, 
   FileText, 
   Send, 
   CheckCircle2, 
@@ -17,6 +17,21 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
   const [testWebhookUrl, setTestWebhookUrl] = useState('');
   const [testMsg, setTestMsg] = useState('');
   const [testing, setTesting] = useState(false);
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
 
   useEffect(() => {
     apiFetch('/api/alerts/history')
@@ -46,7 +61,7 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div>
@@ -55,7 +70,7 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
               Webhook tests, deduplication logs, and 24-hour change digests
             </div>
           </div>
-          <button className="close-btn" onClick={onClose}><X size={20} /></button>
+          <button className="close-btn" onClick={onClose} aria-label="Close dialog"><X size={18} /></button>
         </div>
 
         <div className="modal-body">
@@ -64,14 +79,14 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
               className={`diff-tab ${activeTab === 'alerts' ? 'active' : ''}`}
               onClick={() => setActiveTab('alerts')}
             >
-              <BellRing size={13} style={{ display: 'inline', marginRight: 4 }} />
+              <Bell size={13} style={{ display: 'inline', marginRight: 5 }} />
               Dispatched Alerts Log ({alerts.length})
             </button>
             <button 
               className={`diff-tab ${activeTab === 'digest' ? 'active' : ''}`}
               onClick={() => setActiveTab('digest')}
             >
-              <FileText size={13} style={{ display: 'inline', marginRight: 4 }} />
+              <FileText size={13} style={{ display: 'inline', marginRight: 5 }} />
               24h Daily Digest Preview
             </button>
           </div>
@@ -80,9 +95,9 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
             <div>
               {/* Webhook tester box */}
               <div style={{ 
-                background: '#131c2e', 
+                background: 'var(--bg-elevated)', 
                 border: '1px solid var(--border-subtle)', 
-                borderRadius: '8px', 
+                borderRadius: '6px', 
                 padding: '14px',
                 marginBottom: '16px' 
               }}>
@@ -108,7 +123,7 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
                   </button>
                 </div>
                 {testMsg && (
-                  <div style={{ fontSize: '11.5px', color: 'var(--cyan-400)', marginTop: '6px' }}>
+                  <div style={{ fontSize: '11.5px', color: 'var(--accent-primary)', marginTop: '6px' }}>
                     {testMsg}
                   </div>
                 )}
@@ -118,23 +133,23 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '340px', overflowY: 'auto' }}>
                 {alerts.map(a => (
                   <div key={a.id} style={{ 
-                    background: '#131c2e', 
+                    background: 'var(--bg-elevated)', 
                     border: '1px solid var(--border-subtle)', 
-                    borderRadius: '8px', 
+                    borderRadius: '6px', 
                     padding: '10px 14px',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center'
                   }}>
                     <div>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
                         [{a.channel.toUpperCase()}] {a.title}
                       </div>
                       <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                         {a.summary}
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '2px' }}>
-                        🕒 {new Date(a.timestamp).toLocaleString()} • DedupeKey: <code>{a.dedupeKey}</code>
+                        {new Date(a.timestamp).toLocaleString()} • DedupeKey: <code className="code-pill">{a.dedupeKey}</code>
                       </div>
                     </div>
                     <span className="status-badge ok" style={{ fontSize: '10px' }}>Delivered</span>
@@ -152,14 +167,14 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
           {activeTab === 'digest' && (
             <div>
               <div style={{ 
-                background: '#131c2e', 
+                background: 'var(--bg-elevated)', 
                 border: '1px solid var(--border-subtle)', 
-                borderRadius: '8px', 
+                borderRadius: '6px', 
                 padding: '16px',
                 lineHeight: '1.6'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px', marginBottom: '12px' }}>
-                  <strong>DAILY CHANGE DIGEST REPORT</strong>
+                  <strong style={{ color: 'var(--text-main)', fontSize: '13px' }}>DAILY CHANGE DIGEST REPORT</strong>
                   <span style={{ fontSize: '12px', color: 'var(--text-dim)' }}>
                     Generated: {digest?.generatedAt ? new Date(digest.generatedAt).toLocaleString() : 'Now'}
                   </span>
@@ -172,15 +187,15 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
                 {digest?.items?.map(item => (
                   <div key={item.monitorId} style={{ 
                     padding: '10px 0', 
-                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                    borderBottom: '1px solid var(--border-subtle)',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center'
                   }}>
                     <div>
-                      <div style={{ fontWeight: 600, color: '#ffffff' }}>{item.monitorName}</div>
+                      <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{item.monitorName}</div>
                       <div style={{ fontSize: '12px', color: 'var(--text-dim)' }}>{item.url}</div>
-                      <div style={{ fontSize: '12px', color: 'var(--cyan-400)', marginTop: '2px' }}>
+                      <div style={{ fontSize: '12px', color: 'var(--accent-primary)', marginTop: '2px' }}>
                         {item.lastSummary}
                       </div>
                     </div>

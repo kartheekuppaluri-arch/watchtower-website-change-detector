@@ -1,0 +1,312 @@
+/* ========================================================= */
+/* WATCHTOWER CINEMATIC 3D LANDING PAGE STYLES              */
+/* ========================================================= */
+
+.landing-root {
+  background-color: #0c0714;
+  background-image: 
+    /* Watercolor sunset blooms and bleeds */
+    radial-gradient(circle 650px at 75% 8%, rgba(251, 113, 30, 0.18) 0%, rgba(244, 63, 94, 0.10) 40%, transparent 70%),
+    radial-gradient(circle 500px at 18% 22%, rgba(236, 72, 153, 0.14) 0%, rgba(168, 85, 247, 0.08) 45%, transparent 75%),
+    radial-gradient(circle 750px at 85% 62%, rgba(217, 70, 239, 0.13) 0%, rgba(139, 92, 246, 0.08) 45%, transparent 70%),
+    radial-gradient(circle 600px at 25% 72%, rgba(249, 115, 22, 0.12) 0%, rgba(225, 29, 72, 0.07) 45%, transparent 70%),
+    radial-gradient(circle 850px at 50% 98%, rgba(124, 58, 237, 0.14) 0%, rgba(79, 70, 229, 0.06) 50%, transparent 75%);
+  background-attachment: fixed;
+  color: #f8fafc;
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  position: relative;
+  min-height: 100vh;
+}
+
+/* Centered content wrapper */
+.landing-root .container {
+  width: 100%;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: clamp(24px, 5vw, 80px);
+  padding-right: clamp(24px, 5vw, 80px);
+}
+
+/* 3D Scene Viewport & World Space */
+.scene-3d-viewport {
+  position: relative;
+  width: 100%;
+  height: 600px;
+  perspective: 1200px;
+  perspective-origin: 50% 50%;
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.world-3d {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease-out;
+}
+
+/* Central WatchTower Anchor Beacon */
+.watchtower-core-beacon {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  transform-style: preserve-3d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.core-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px dashed rgba(56, 189, 248, 0.4);
+  box-shadow: 0 0 25px rgba(56, 189, 248, 0.2);
+  animation: rotateRing 14s linear infinite;
+}
+
+.core-ring.outer {
+  width: 220px;
+  height: 220px;
+  border-color: rgba(56, 189, 248, 0.25);
+  animation-direction: reverse;
+  animation-duration: 22s;
+}
+
+.core-ring.middle {
+  width: 150px;
+  height: 150px;
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+.core-pulse {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #38bdf8 0%, #0284c7 60%, rgba(2, 132, 199, 0.2) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 40px rgba(56, 189, 248, 0.6), inset 0 0 15px rgba(255, 255, 255, 0.6);
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
+/* Orbital Rings for Revolving Satellites */
+.orbit-track {
+  position: absolute;
+  width: 680px;
+  height: 680px;
+  border-radius: 50%;
+  border: 1px solid rgba(56, 189, 248, 0.12);
+  transform: rotateX(72deg);
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+.orbit-carousel {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  animation: orbit3D 32s linear infinite;
+}
+
+.orbit-carousel:hover {
+  animation-play-state: paused;
+}
+
+/* Revolving Browser Panels */
+.orbital-browser-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 320px;
+  height: 220px;
+  margin-top: -110px;
+  margin-left: -160px;
+  transform-style: preserve-3d;
+  background: rgba(13, 19, 32, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), 0 0 25px rgba(56, 189, 248, 0.15);
+  overflow: hidden;
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.orbital-browser-panel:hover {
+  border-color: #38bdf8;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9), 0 0 35px rgba(56, 189, 248, 0.35);
+}
+
+/* 180° Dramatic Flipping Browser Card */
+.flip-browser-card {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+  transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+.flip-browser-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  text-align: left;
+  transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-style: preserve-3d;
+}
+
+.flip-browser-card:hover .flip-browser-inner,
+.flip-browser-card.flipped .flip-browser-inner {
+  transform: rotateY(180deg);
+}
+
+.flip-browser-front, .flip-browser-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.flip-browser-back {
+  transform: rotateY(180deg);
+  background: #090e18;
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+/* Electric Blue Laser Sweep Scanning Line */
+.laser-scan-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #38bdf8 30%, #ffffff 50%, #38bdf8 70%, transparent);
+  box-shadow: 0 0 14px #38bdf8, 0 0 28px rgba(56, 189, 248, 0.8);
+  animation: scanSweep 3.5s ease-in-out infinite;
+  z-index: 25;
+  pointer-events: none;
+}
+
+/* Highlighted Mutation Pulses */
+.diff-pulse-added {
+  background: rgba(52, 211, 153, 0.18);
+  color: #6ee7b7;
+  border-left: 3px solid #34d399;
+  padding: 2px 6px;
+  border-radius: 4px;
+  animation: pulseAdded 2s infinite alternate;
+}
+
+.diff-pulse-removed {
+  background: rgba(248, 113, 113, 0.18);
+  color: #fca5a5;
+  border-left: 3px solid #f87171;
+  padding: 2px 6px;
+  border-radius: 4px;
+  animation: pulseRemoved 2s infinite alternate;
+}
+
+/* Animations */
+@keyframes orbit3D {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(360deg);
+  }
+}
+
+@keyframes rotateRing {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 30px rgba(56, 189, 248, 0.5), inset 0 0 10px rgba(255, 255, 255, 0.5);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 50px rgba(56, 189, 248, 0.8), inset 0 0 20px rgba(255, 255, 255, 0.8);
+  }
+}
+
+@keyframes scanSweep {
+  0% { top: 0%; opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+
+@keyframes pulseAdded {
+  0% { background: rgba(52, 211, 153, 0.12); }
+  100% { background: rgba(52, 211, 153, 0.28); }
+}
+
+@keyframes pulseRemoved {
+  0% { background: rgba(248, 113, 113, 0.12); }
+  100% { background: rgba(248, 113, 113, 0.28); }
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .scene-3d-viewport {
+    height: 480px;
+    perspective: 800px;
+  }
+  .orbital-browser-panel {
+    width: 270px;
+    height: 190px;
+    margin-top: -95px;
+    margin-left: -135px;
+  }
+}
+
+@media (max-width: 600px) {
+  .scene-3d-viewport {
+    height: 400px;
+    perspective: 600px;
+  }
+  .orbit-track {
+    width: 380px;
+    height: 380px;
+  }
+  .orbital-browser-panel {
+    width: 230px;
+    height: 160px;
+    margin-top: -80px;
+    margin-left: -115px;
+  }
+}
+
+/* Typewriter Cursor */
+@keyframes typewriterBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.typewriter-cursor {
+  display: inline-block;
+  margin-left: 3px;
+  color: #fb923c;
+  font-weight: 300;
+  animation: typewriterBlink 0.9s infinite;
+  vertical-align: baseline;
+}

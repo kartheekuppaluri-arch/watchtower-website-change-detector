@@ -8,11 +8,16 @@ import {
   HelpCircle, 
   Layers, 
   FlaskConical, 
-  FileText 
+  FileText,
+  LayoutGrid,
+  BookOpen,
+  Sparkles
 } from 'lucide-react';
 
 export default function Header({ 
   monitors = [], 
+  activeView = 'dashboard',
+  onSelectView,
   onAddMonitor, 
   onRunAllChecks, 
   isRunningAll, 
@@ -30,6 +35,7 @@ export default function Header({
   return (
     <header>
       <div className="header-wrapper">
+        {/* Brand Lockup */}
         <div className="brand-section">
           <div className="brand-icon">
             <Activity size={24} color="#ffffff" />
@@ -55,7 +61,34 @@ export default function Header({
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        {/* View Switcher & Action Controls */}
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Navigation View Switcher (Dashboard vs About) */}
+          <div className="view-nav-tabs">
+            <button 
+              className={`view-nav-tab ${activeView === 'landing' ? 'active' : ''}`}
+              onClick={() => onSelectView && onSelectView('landing')}
+              title="Return to Public 3D Landing Page"
+            >
+              <Sparkles size={13} color="var(--cyan-400)" />
+              Product Film
+            </button>
+            <button 
+              className={`view-nav-tab ${activeView === 'dashboard' ? 'active' : ''}`}
+              onClick={() => onSelectView && onSelectView('dashboard')}
+            >
+              <LayoutGrid size={13} />
+              Dashboard
+            </button>
+            <button 
+              className={`view-nav-tab ${activeView === 'about' ? 'active' : ''}`}
+              onClick={() => onSelectView && onSelectView('about')}
+            >
+              <BookOpen size={13} />
+              Architecture & About
+            </button>
+          </div>
+
           <button 
             className={`btn ${testStudioOpen ? 'btn-accent' : 'btn-secondary'}`}
             onClick={() => setTestStudioOpen(!testStudioOpen)}
@@ -95,48 +128,50 @@ export default function Header({
         </div>
       </div>
 
-      {/* KPI Stats Bar */}
-      <div className="kpi-grid">
-        <div className="glass-panel kpi-card">
-          <div className="kpi-icon-wrap" style={{ color: 'var(--cyan-400)' }}>
-            <Layers size={22} />
+      {/* KPI Stats Bar (Visible on Dashboard) */}
+      {activeView === 'dashboard' && (
+        <div className="kpi-grid">
+          <div className="glass-panel kpi-card">
+            <div className="kpi-icon-wrap" style={{ color: 'var(--cyan-400)' }}>
+              <Layers size={22} />
+            </div>
+            <div>
+              <div className="kpi-value">{monitors.length}</div>
+              <div className="kpi-label">Active Monitors ({activeCount} Live)</div>
+            </div>
           </div>
-          <div>
-            <div className="kpi-value">{monitors.length}</div>
-            <div className="kpi-label">Active Monitors ({activeCount} Live)</div>
-          </div>
-        </div>
 
-        <div className="glass-panel kpi-card">
-          <div className="kpi-icon-wrap" style={{ color: 'var(--emerald-400)' }}>
-            <Activity size={22} />
+          <div className="glass-panel kpi-card">
+            <div className="kpi-icon-wrap" style={{ color: 'var(--emerald-400)' }}>
+              <Activity size={22} />
+            </div>
+            <div>
+              <div className="kpi-value">{totalSnapshots}</div>
+              <div className="kpi-label">Snapshots Recorded</div>
+            </div>
           </div>
-          <div>
-            <div className="kpi-value">{totalSnapshots}</div>
-            <div className="kpi-label">Snapshots Recorded</div>
-          </div>
-        </div>
 
-        <div className="glass-panel kpi-card">
-          <div className="kpi-icon-wrap" style={{ color: 'var(--amber-400)' }}>
-            <BellRing size={22} />
+          <div className="glass-panel kpi-card">
+            <div className="kpi-icon-wrap" style={{ color: 'var(--amber-400)' }}>
+              <BellRing size={22} />
+            </div>
+            <div>
+              <div className="kpi-value">{changedCount}</div>
+              <div className="kpi-label">Active Change Alerts</div>
+            </div>
           </div>
-          <div>
-            <div className="kpi-value">{changedCount}</div>
-            <div className="kpi-label">Active Change Alerts</div>
-          </div>
-        </div>
 
-        <div className="glass-panel kpi-card">
-          <div className="kpi-icon-wrap" style={{ color: 'var(--rose-400)' }}>
-            <ShieldCheck size={22} />
-          </div>
-          <div>
-            <div className="kpi-value">{totalIncidents}</div>
-            <div className="kpi-label">Outage/CAPTCHA Defended</div>
+          <div className="glass-panel kpi-card">
+            <div className="kpi-icon-wrap" style={{ color: 'var(--rose-400)' }}>
+              <ShieldCheck size={22} />
+            </div>
+            <div>
+              <div className="kpi-value">{totalIncidents}</div>
+              <div className="kpi-label">Outage/CAPTCHA Defended</div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </header>
   );
 }
