@@ -7,7 +7,7 @@ const db = require('./db');
 const scheduler = require('./engine/scheduler');
 const { crawlWithBrowser } = require('./engine/crawler');
 const { computeTextDiff, computeVisualScreenshotDiff, generateChangeSummary } = require('./engine/differ');
-const { sendWebhookAlert, generateDailyDigest } = require('./engine/alerts');
+const { sendWebhookAlert, sendEmailAlert, generateDailyDigest } = require('./engine/alerts');
 const { setupMockRoutes } = require('./mockServer');
 
 const app = express();
@@ -17,10 +17,9 @@ const isVercel = Boolean(process.env.VERCEL);
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Static directory for snapshot screenshots (safe on Vercel)
-const SCREENSHOTS_DIR = isVercel
-  ? path.join('/tmp', 'screenshots')
-  : path.join(__dirname, '..', 'data', 'screenshots');
+// Static directory for snapshot screenshots (supports persistent disk if mounted)
+const DATA_DIR = process.env.DATA_DIR || process.env.PERSISTENT_DATA_DIR || (isVercel ? path.join('/tmp', 'data') : path.join(__dirname, '..', 'data'));
+const SCREENSHOTS_DIR = path.join(DATA_DIR, 'screenshots');
 
 try {
   if (!fs.existsSync(SCREENSHOTS_DIR)) {
@@ -30,7 +29,13 @@ try {
   console.warn('[SERVER] Could not create screenshots directory, continuing:', e.message);
 }
 
-app.use('/api/screenshots', express.static(SCREENSHOTS_DIR));
+// Serve screenshots with permissive CORS so cross-origin frontends (e.g. Vercel) can render images safely
+app.use('/api/screenshots', (req, res, next) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.set('Cache-Control', 'public, max-age=86400');
+  next();
+}, express.static(SCREENSHOTS_DIR));
 
 // Serve production frontend bundle if built (for local standalone run)
 const DIST_DIR = path.join(__dirname, '..', 'dist');
@@ -195,31 +200,46 @@ apiRouter.get('/monitors/:id/rss', (req, res) => {
   const snapshots = db.getSnapshots(monitor.id);
   const host = req.get('host') || 'localhost:3001';
   const protocol = req.protocol || 'http';
-  const siteUrl = `${protocol}://${host}`;
+  const backendBase = `${protocol}://${host}`;
+  const frontendBase = process.env.FRONTEND_URL || 
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://watchtower-website-change-detector.vercel.app');
   
   const rssXml = `<?xml version="1.0" encoding="UTF-8" ?>
-<rss version="2.0">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
 <channel>
-  <title>${escapeXml(monitor.name)} - Website Change Detector</title>
-  <link>${escapeXml(monitor.url)}</link>
+  <title>${escapeXml(monitor.name)} - WatchTower Timeline</title>
+  <link>${escapeXml(`${frontendBase}/?monitor=${monitor.id}`)}</link>
   <description>Automated timeline of detected changes for ${escapeXml(monitor.url)}</description>
   <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
-  ${snapshots.map((s, idx) => `
-  <item>
-    <title>Version ${snapshots.length - idx}: ${escapeXml(s.summary || 'Content Updated')}</title>
-    <link>${siteUrl}/?monitor=${monitor.id}&amp;snap=${s.id}</link>
+  <generator>WatchTower Website Change Detector</generator>
+  <atom:link href="${escapeXml(`${backendBase}/api/monitors/${monitor.id}/rss`)}" rel="self" type="application/rss+xml" />
+  ${snapshots.map((s, idx) => {
+    const itemTitle = s.summary || `Version ${snapshots.length - idx} Detected`;
+    const itemLink = `${frontendBase}/?monitor=${monitor.id}&amp;snap=${s.id}&amp;view=diff`;
+    const screenshotImg = s.screenshotUrl
+      ? (s.screenshotUrl.startsWith('http') || s.screenshotUrl.startsWith('data:') 
+          ? s.screenshotUrl 
+          : `${backendBase}${s.screenshotUrl}`)
+      : null;
+
+    return `  <item>
+    <title>${escapeXml(`v${snapshots.length - idx}: ${itemTitle}`)}</title>
+    <link>${escapeXml(itemLink)}</link>
+    <guid isPermaLink="false">${escapeXml(`${monitor.id}-${s.id}`)}</guid>
     <pubDate>${new Date(s.timestamp).toUTCString()}</pubDate>
     <description><![CDATA[
-      <p><strong>Change Summary:</strong> ${s.summary}</p>
-      <p><strong>Diff:</strong> +${s.diffStats?.addedLines || 0} / -${s.diffStats?.removedLines || 0} lines (${s.diffStats?.changedPercent || 0}%)</p>
-      <p><strong>Hash:</strong> ${s.contentHash}</p>
-      ${s.screenshotUrl && !s.screenshotUrl.startsWith('data:') ? `<p><img src="${siteUrl}${s.screenshotUrl}" alt="Snapshot Screenshot" style="max-width:500px;"/></p>` : ''}
+      <p><strong>Change Summary:</strong> ${escapeXml(s.summary || 'Content updated')}</p>
+      <p><strong>Diff Statistics:</strong> +${s.diffStats?.addedLines || 0} / -${s.diffStats?.removedLines || 0} lines (${s.diffStats?.changedPercent || 0}% change)</p>
+      <p><strong>Content Hash:</strong> <code>${escapeXml(s.contentHash)}</code></p>
+      ${screenshotImg ? `<p><img src="${escapeXml(screenshotImg)}" alt="Snapshot Preview" style="max-width:550px; border-radius:6px;"/></p>` : ''}
+      <p><a href="${escapeXml(itemLink)}">View interactive diff &amp; slider on WatchTower</a></p>
     ]]></description>
-  </item>`).join('\n')}
+  </item>`;
+  }).join('\n')}
 </channel>
 </rss>`;
 
-  res.set('Content-Type', 'application/xml');
+  res.set('Content-Type', 'application/rss+xml; charset=utf-8');
   res.send(rssXml);
 });
 
@@ -298,24 +318,60 @@ apiRouter.post('/picker/inspect', async (req, res) => {
 // ALERTS & NOTIFICATIONS API
 // -------------------------------------------------------------
 apiRouter.post('/alerts/test-webhook', async (req, res) => {
-  const { webhookUrl, monitorName = 'Test Target' } = req.body;
+  const { webhookUrl, monitorName = 'Test Monitor' } = req.body;
   if (!webhookUrl) return res.status(400).json({ error: 'webhookUrl is required' });
 
-  const host = req.get('host') || 'localhost:3001';
-  const protocol = req.protocol || 'http';
+  const frontendBase = process.env.FRONTEND_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://watchtower-website-change-detector.vercel.app');
 
   const testPayload = {
     monitorId: 'test-mon',
     monitorName,
     pageUrl: 'https://example.com/test-product',
-    summary: 'TEST ALERT: Price decreased from $99.00 to $79.00 (-20%).',
+    summary: 'TEST ALERT: Price decreased from $99.00 to $79.00 (-20%). Stock status changed to In Stock.',
     diffStats: { addedLines: 2, removedLines: 2, changedPercent: 12 },
-    diffLink: `${protocol}://${host}/?view=diff&test=true`,
+    diffLink: `${frontendBase}/?view=diff&test=true`,
     timestamp: new Date().toISOString()
   };
 
-  const success = await sendWebhookAlert(webhookUrl, testPayload);
-  res.json({ success, message: success ? 'Webhook delivered successfully!' : 'Webhook delivery failed. Please check the URL format.' });
+  const result = await sendWebhookAlert(webhookUrl, testPayload);
+  const success = Boolean(result?.success);
+  res.json({
+    success,
+    message: success
+      ? `✅ Webhook delivered successfully! (HTTP ${result.status || 200})`
+      : `❌ Webhook failed: ${result?.error || 'Unknown error. Check the URL and try again.'}`,
+    details: result
+  });
+});
+
+apiRouter.post('/alerts/test-email', async (req, res) => {
+  const { email, monitorName = 'Test Monitor' } = req.body;
+  if (!email) return res.status(400).json({ error: 'email is required' });
+
+  const frontendBase = process.env.FRONTEND_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://watchtower-website-change-detector.vercel.app');
+
+  const testPayload = {
+    monitorName,
+    pageUrl: 'https://example.com/test-product',
+    summary: 'TEST EMAIL: Price decreased from $99.00 to $79.00 (-20%). Stock status changed to In Stock.',
+    diffStats: { addedLines: 2, removedLines: 2, changedPercent: 12 },
+    diffLink: `${frontendBase}/?view=diff&test=true`,
+    timestamp: new Date().toISOString()
+  };
+
+  const result = await sendEmailAlert(email, testPayload);
+  const success = Boolean(result?.success);
+  res.json({
+    success,
+    message: success
+      ? `✅ Email delivered via ${result.provider}! Check inbox for ${email}.`
+      : result?.unconfigured
+        ? `⚠️ Email unconfigured: ${result.error}`
+        : `❌ Email failed: ${result?.error || 'Unknown error'}`,
+    details: result
+  });
 });
 
 apiRouter.get('/digest', (req, res) => {

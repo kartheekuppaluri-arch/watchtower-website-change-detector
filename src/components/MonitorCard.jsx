@@ -13,9 +13,12 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   ShieldAlert, 
-  Tag 
+  Tag,
+  Copy,
+  Check
 } from 'lucide-react';
 import { apiUrl } from '../api';
+
 
 export default function MonitorCard({ 
   monitor, 
@@ -27,6 +30,7 @@ export default function MonitorCard({
   onDelete 
 }) {
   const [isChecking, setIsChecking] = useState(false);
+  const [rssCopied, setRssCopied] = useState(false);
 
   const handleCheck = async () => {
     setIsChecking(true);
@@ -36,6 +40,20 @@ export default function MonitorCard({
       setIsChecking(false);
     }
   };
+
+  const handleRssCopy = async () => {
+    const rssUrl = apiUrl(`/api/monitors/${monitor.id}/rss`);
+    const fullUrl = rssUrl.startsWith('http') ? rssUrl : `${window.location.origin}${rssUrl}`;
+    try {
+      await navigator.clipboard.writeText(fullUrl);
+      setRssCopied(true);
+      setTimeout(() => setRssCopied(false), 2500);
+    } catch {
+      // Fallback: open in new tab if clipboard is unavailable
+      window.open(fullUrl, '_blank', 'noreferrer');
+    }
+  };
+
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -197,16 +215,25 @@ export default function MonitorCard({
             Timeline
           </button>
 
+          <button 
+            className="btn btn-secondary btn-sm" 
+            onClick={handleRssCopy}
+            title={rssCopied ? 'RSS URL copied!' : 'Copy RSS feed URL to clipboard'}
+            style={{ transition: 'all 0.2s', minWidth: '60px' }}
+          >
+            {rssCopied ? <Check size={12} style={{ color: '#34d399' }} /> : <Copy size={12} />}
+            {rssCopied ? 'Copied!' : 'RSS'}
+          </button>
           <a 
             href={apiUrl(`/api/monitors/${monitor.id}/rss`)} 
             target="_blank" 
             rel="noreferrer" 
             className="btn btn-secondary btn-sm"
-            title="Per-page RSS Feed"
+            title="Open RSS feed in browser / paste into RSS reader"
           >
             <Rss size={12} />
-            RSS
           </a>
+
 
           <button 
             className="btn btn-secondary btn-sm" 

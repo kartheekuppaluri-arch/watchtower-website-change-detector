@@ -3,9 +3,8 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
 const isVercel = Boolean(process.env.VERCEL);
-const DB_PATH = isVercel
-  ? path.join('/tmp', 'data', 'db.json')
-  : path.join(__dirname, '..', 'data', 'db.json');
+const DATA_DIR = process.env.DATA_DIR || process.env.PERSISTENT_DATA_DIR || (isVercel ? path.join('/tmp', 'data') : path.join(__dirname, '..', 'data'));
+const DB_PATH = path.join(DATA_DIR, 'db.json');
 
 const defaultDb = {
   monitors: [
@@ -264,7 +263,8 @@ class Database {
       title: alert.title,
       summary: alert.summary,
       dedupeKey: alert.dedupeKey,
-      sentSuccessfully: alert.sentSuccessfully !== false
+      sentSuccessfully: alert.sentSuccessfully !== false,
+      details: alert.details || null
     };
     db.alerts.push(newAlert);
     this.write(db);

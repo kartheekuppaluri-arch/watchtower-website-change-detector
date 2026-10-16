@@ -5,8 +5,11 @@ import {
   FileText, 
   Send, 
   CheckCircle2, 
+  XCircle,
+  AlertTriangle,
   Clock, 
-  ExternalLink 
+  Mail,
+  Webhook
 } from 'lucide-react';
 import { apiFetch } from '../api';
 
@@ -14,19 +17,22 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [alerts, setAlerts] = useState([]);
   const [digest, setDigest] = useState(null);
+
+  // Webhook tester state
   const [testWebhookUrl, setTestWebhookUrl] = useState('');
-  const [testMsg, setTestMsg] = useState('');
-  const [testing, setTesting] = useState(false);
+  const [webhookMsg, setWebhookMsg] = useState(null);
+  const [testingWebhook, setTestingWebhook] = useState(false);
+
+  // Email tester state
+  const [testEmail, setTestEmail] = useState('');
+  const [emailMsg, setEmailMsg] = useState(null);
+  const [testingEmail, setTestingEmail] = useState(false);
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
+    const handleKeyDown = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handleKeyDown);
-
     return () => {
       document.body.style.overflow = originalOverflow;
       window.removeEventListener('keydown', handleKeyDown);
@@ -38,7 +44,6 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
       .then(r => r.json())
       .then(d => setAlerts(d.alerts || []))
       .catch(console.error);
-
     apiFetch('/api/digest')
       .then(r => r.json())
       .then(d => setDigest(d.digest || null))
@@ -47,18 +52,46 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
 
   const runTestWebhook = () => {
     if (!testWebhookUrl) return;
-    setTesting(true);
-    setTestMsg('');
+    setTestingWebhook(true);
+    setWebhookMsg(null);
     apiFetch('/api/alerts/test-webhook', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ webhookUrl: testWebhookUrl, monitorName: 'Live Test Monitor' })
+      body: JSON.stringify({ webhookUrl: testWebhookUrl, monitorName: 'WatchTower Live Test' })
     })
       .then(r => r.json())
-      .then(d => setTestMsg(d.message))
-      .catch(e => setTestMsg('Error: ' + e.message))
-      .finally(() => setTesting(false));
+      .then(d => setWebhookMsg({ success: d.success, text: d.message }))
+      .catch(e => setWebhookMsg({ success: false, text: 'Network error: ' + e.message }))
+      .finally(() => setTestingWebhook(false));
   };
+
+  const runTestEmail = () => {
+    if (!testEmail) return;
+    setTestingEmail(true);
+    setEmailMsg(null);
+    apiFetch('/api/alerts/test-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: testEmail, monitorName: 'WatchTower Live Test' })
+    })
+      .then(r => r.json())
+      .then(d => setEmailMsg({ success: d.success, text: d.message }))
+      .catch(e => setEmailMsg({ success: false, text: 'Network error: ' + e.message }))
+      .finally(() => setTestingEmail(false));
+  };
+
+  const msgStyle = (success) => ({
+    fontSize: '12px',
+    marginTop: '8px',
+    padding: '8px 12px',
+    borderRadius: '6px',
+    background: success ? 'rgba(52, 211, 153, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+    border: `1px solid ${success ? 'rgba(52, 211, 153, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+    color: success ? '#34d399' : '#f87171',
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'flex-start'
+  });
 
   return (
     <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
@@ -67,7 +100,7 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
           <div>
             <div className="modal-title">Alert Dispatcher & Daily Digest</div>
             <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              Webhook tests, deduplication logs, and 24-hour change digests
+              Webhook & email tests, deduplication logs, and 24-hour change digests
             </div>
           </div>
           <button className="close-btn" onClick={onClose} aria-label="Close dialog"><X size={18} /></button>
@@ -93,44 +126,91 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
 
           {activeTab === 'alerts' && (
             <div>
-              {/* Webhook tester box */}
+              {/* Webhook Tester */}
               <div style={{ 
                 background: 'var(--bg-elevated)', 
                 border: '1px solid var(--border-subtle)', 
                 borderRadius: '6px', 
                 padding: '14px',
-                marginBottom: '16px' 
+                marginBottom: '12px'
               }}>
-                <label className="form-label" style={{ fontSize: '12.5px' }}>
-                  Send Test Discord / Telegram Webhook Notification:
+                <label className="form-label" style={{ fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <Webhook size={13} />
+                  Test Webhook (Discord / Telegram / Slack / Custom):
                 </label>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input 
                     type="url" 
                     className="form-input mono" 
-                    placeholder="https://discord.com/api/webhooks/..." 
+                    placeholder="https://discord.com/api/webhooks/...  |  https://api.telegram.org/bot.../sendMessage?chat_id=..." 
                     value={testWebhookUrl}
                     onChange={e => setTestWebhookUrl(e.target.value)}
-                    style={{ fontSize: '12px', flex: 1 }}
+                    style={{ fontSize: '11.5px', flex: 1 }}
                   />
                   <button 
                     className="btn btn-primary btn-sm" 
                     onClick={runTestWebhook}
-                    disabled={!testWebhookUrl || testing}
+                    disabled={!testWebhookUrl || testingWebhook}
                   >
                     <Send size={12} />
-                    {testing ? 'Sending...' : 'Send Test'}
+                    {testingWebhook ? 'Sending...' : 'Send Test'}
                   </button>
                 </div>
-                {testMsg && (
-                  <div style={{ fontSize: '11.5px', color: 'var(--accent-primary)', marginTop: '6px' }}>
-                    {testMsg}
+                {webhookMsg && (
+                  <div style={msgStyle(webhookMsg.success)}>
+                    {webhookMsg.success ? <CheckCircle2 size={14} style={{ flexShrink: 0, marginTop: 1 }} /> : <XCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />}
+                    <span>{webhookMsg.text}</span>
                   </div>
                 )}
               </div>
 
+              {/* Email Tester */}
+              <div style={{ 
+                background: 'var(--bg-elevated)', 
+                border: '1px solid var(--border-subtle)', 
+                borderRadius: '6px', 
+                padding: '14px',
+                marginBottom: '16px'
+              }}>
+                <label className="form-label" style={{ fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <Mail size={13} />
+                  Test Email Delivery (requires RESEND_API_KEY or SMTP_HOST on server):
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input 
+                    type="email" 
+                    className="form-input" 
+                    placeholder="you@example.com" 
+                    value={testEmail}
+                    onChange={e => setTestEmail(e.target.value)}
+                    style={{ fontSize: '12px', flex: 1 }}
+                  />
+                  <button 
+                    className="btn btn-primary btn-sm" 
+                    onClick={runTestEmail}
+                    disabled={!testEmail || testingEmail}
+                  >
+                    <Send size={12} />
+                    {testingEmail ? 'Sending...' : 'Send Test'}
+                  </button>
+                </div>
+                {emailMsg && (
+                  <div style={msgStyle(emailMsg.success)}>
+                    {emailMsg.success 
+                      ? <CheckCircle2 size={14} style={{ flexShrink: 0, marginTop: 1 }} /> 
+                      : emailMsg.text.includes('⚠️') 
+                        ? <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1, color: '#fbbf24' }} /> 
+                        : <XCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />}
+                    <span style={{ color: emailMsg.text.includes('⚠️') ? '#fbbf24' : undefined }}>{emailMsg.text}</span>
+                  </div>
+                )}
+                <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '8px', lineHeight: 1.5 }}>
+                  Set <code className="code-pill">RESEND_API_KEY</code> (recommended) or <code className="code-pill">SMTP_HOST</code> + <code className="code-pill">SMTP_USER</code> + <code className="code-pill">SMTP_PASS</code> in your Render environment variables.
+                </div>
+              </div>
+
               {/* History list */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '340px', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
                 {alerts.map(a => (
                   <div key={a.id} style={{ 
                     background: 'var(--bg-elevated)', 
@@ -139,25 +219,33 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
                     padding: '10px 14px',
                     display: 'flex',
                     justifyContent: 'space-between',
-                    alignItems: 'center'
+                    alignItems: 'flex-start',
+                    gap: '12px'
                   }}>
-                    <div>
+                    <div style={{ flex: 1 }}>
                       <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
                         [{a.channel.toUpperCase()}] {a.title}
                       </div>
                       <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                         {a.summary}
                       </div>
+                      {a.details && !a.sentSuccessfully && (
+                        <div style={{ fontSize: '11px', color: '#f87171', marginTop: '2px' }}>
+                          {a.details}
+                        </div>
+                      )}
                       <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '2px' }}>
-                        {new Date(a.timestamp).toLocaleString()} • DedupeKey: <code className="code-pill">{a.dedupeKey}</code>
+                        {new Date(a.timestamp).toLocaleString()} • DedupeKey: <code className="code-pill">{a.dedupeKey?.slice(0, 16)}…</code>
                       </div>
                     </div>
-                    <span className="status-badge ok" style={{ fontSize: '10px' }}>Delivered</span>
+                    <span className={`status-badge ${a.sentSuccessfully ? 'ok' : 'error'}`} style={{ fontSize: '10px', flexShrink: 0 }}>
+                      {a.sentSuccessfully ? 'Delivered' : 'Failed'}
+                    </span>
                   </div>
                 ))}
                 {alerts.length === 0 && (
                   <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-dim)' }}>
-                    No alerts sent yet. Alerts are sent whenever a monitor status changes!
+                    No alerts sent yet. Alerts are dispatched whenever a significant change is detected.
                   </div>
                 )}
               </div>
@@ -200,7 +288,7 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <span className={`status-badge ${item.status.toLowerCase()}`}>
+                      <span className={`status-badge ${item.status?.toLowerCase() === 'changed' ? 'changed' : 'ok'}`}>
                         {item.changesCount} Changes
                       </span>
                     </div>

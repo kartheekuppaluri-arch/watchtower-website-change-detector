@@ -4,9 +4,8 @@ const path = require('path');
 const { PNG } = require('pngjs');
 const pixelmatch = require('pixelmatch');
 const isVercel = Boolean(process.env.VERCEL);
-const SCREENSHOTS_DIR = isVercel
-  ? path.join('/tmp', 'screenshots')
-  : path.join(__dirname, '..', '..', 'data', 'screenshots');
+const DATA_DIR = process.env.DATA_DIR || process.env.PERSISTENT_DATA_DIR || (isVercel ? path.join('/tmp', 'data') : path.join(__dirname, '..', '..', 'data'));
+const SCREENSHOTS_DIR = path.join(DATA_DIR, 'screenshots');
 
 /**
  * Compute line-by-line and word-by-word text diff
