@@ -5,6 +5,7 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
 const { PNG } = require('pngjs');
+const { uploadScreenshot } = require('./storage');
 
 const isVercel = Boolean(process.env.VERCEL);
 const DATA_DIR = process.env.DATA_DIR || process.env.PERSISTENT_DATA_DIR || (isVercel ? path.join('/tmp', 'data') : path.join(__dirname, '..', '..', 'data'));
@@ -185,7 +186,7 @@ async function crawlWithBrowser(url, options = {}) {
   const execPath = getBrowserExecutablePath();
   if (!execPath) {
     console.log(`[CRAWLER] No local browser binary detected; falling back to high-speed Cheerio HTTP crawler for: ${url}`);
-    return await crawlWithHttp(url);
+    return await crawlWithHttp(url, options);
   }
 
   try {
@@ -245,6 +246,18 @@ async function crawlWithBrowser(url, options = {}) {
     });
 
     const screenshotUrl = `/api/screenshots/${screenshotFilename}`;
+    let screenshotStoragePath = '';
+
+    const monitorId = options.monitorId || 'general';
+    const remotePath = `monitors/${monitorId}/${screenshotFilename}`;
+    try {
+      const uploadRes = await uploadScreenshot(screenshotFullPath, remotePath);
+      if (uploadRes?.success) {
+        screenshotStoragePath = uploadRes.storagePath;
+      }
+    } catch (uploadErr) {
+      console.warn('[CRAWLER] Supabase screenshot upload non-fatal warning:', uploadErr.message);
+    }
 
     // Check for Outage or CAPTCHA
     const incidentCheck = inspectForOutageOrCaptcha(responseStatus, rawHtml, title);
@@ -259,6 +272,7 @@ async function crawlWithBrowser(url, options = {}) {
       rawHtml,
       screenshotUrl,
       screenshotFullPath,
+      screenshotStoragePath,
       incident: incidentCheck
     };
   } catch (err) {
@@ -271,6 +285,8 @@ async function crawlWithBrowser(url, options = {}) {
       title: 'Error',
       rawHtml: '',
       screenshotUrl: '',
+      screenshotFullPath: '',
+      screenshotStoragePath: '',
       incident: {
         isIncident: true,
         type: err.name === 'TimeoutError' ? 'TIMEOUT' : 'OUTAGE',
@@ -283,7 +299,7 @@ async function crawlWithBrowser(url, options = {}) {
 /**
  * Fast HTTP fetch fallback if browser is not required
  */
-async function crawlWithHttp(url) {
+async function crawlWithHttp(url, options = {}) {
   try {
     const targetUrl = resolveUrl(url);
     const res = await fetch(targetUrl, {
@@ -302,6 +318,21 @@ async function crawlWithHttp(url) {
 
     // Create a persistent PNG screenshot file for environments without headless browser
     const synthetic = createSyntheticScreenshot(title, res.status, targetUrl);
+    let screenshotStoragePath = '';
+
+    if (synthetic.screenshotFullPath && fs.existsSync(synthetic.screenshotFullPath)) {
+      const monitorId = options.monitorId || 'general';
+      const filename = path.basename(synthetic.screenshotFullPath);
+      const remotePath = `monitors/${monitorId}/${filename}`;
+      try {
+        const uploadRes = await uploadScreenshot(synthetic.screenshotFullPath, remotePath);
+        if (uploadRes?.success) {
+          screenshotStoragePath = uploadRes.storagePath;
+        }
+      } catch (uploadErr) {
+        console.warn('[CRAWLER] Supabase synthetic upload non-fatal warning:', uploadErr.message);
+      }
+    }
 
     return {
       success: !incidentCheck.isIncident,
@@ -310,6 +341,7 @@ async function crawlWithHttp(url) {
       rawHtml,
       screenshotUrl: synthetic.screenshotUrl,
       screenshotFullPath: synthetic.screenshotFullPath,
+      screenshotStoragePath,
       incident: incidentCheck
     };
   } catch (err) {
@@ -319,6 +351,8 @@ async function crawlWithHttp(url) {
       title: 'Error',
       rawHtml: '',
       screenshotUrl: '',
+      screenshotFullPath: '',
+      screenshotStoragePath: '',
       incident: {
         isIncident: true,
         type: 'OUTAGE',

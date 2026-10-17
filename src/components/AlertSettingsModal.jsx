@@ -205,7 +205,11 @@ export default function AlertSettingsModal({ onClose, defaultTab = 'alerts' }) {
                   </div>
                 )}
                 <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '8px', lineHeight: 1.5 }}>
-                  Set <code className="code-pill">RESEND_API_KEY</code> (recommended) or <code className="code-pill">SMTP_HOST</code> + <code className="code-pill">SMTP_USER</code> + <code className="code-pill">SMTP_PASS</code> in your Render environment variables.
+                  Set <code className="code-pill">RESEND_API_KEY</code> and <code className="code-pill">EMAIL_FROM=onboarding@resend.dev</code> in server environment variables.
+                  <br />
+                  <span style={{ color: 'var(--amber-400)', display: 'inline-block', marginTop: '4px' }}>
+                    ℹ️ <strong>Resend Testing Restriction:</strong> The testing sender (<code>onboarding@resend.dev</code>) can only deliver to the verified Resend account owner's email address. To deliver to other recipients or club members, a verified custom domain is required in Resend.
+                  </span>
                 </div>
               </div>
 

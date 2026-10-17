@@ -8,6 +8,7 @@ const scheduler = require('./engine/scheduler');
 const { crawlWithBrowser } = require('./engine/crawler');
 const { computeTextDiff, computeVisualScreenshotDiff, generateChangeSummary } = require('./engine/differ');
 const { sendWebhookAlert, sendEmailAlert, generateDailyDigest } = require('./engine/alerts');
+const { getSignedUrl } = require('./engine/storage');
 const { setupMockRoutes } = require('./mockServer');
 
 const app = express();
@@ -204,6 +205,42 @@ apiRouter.get('/monitors/:id/rss', (req, res) => {
   const frontendBase = process.env.FRONTEND_URL || 
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://watchtower-website-change-detector.vercel.app');
   
+  const rssItems = snapshots.length === 0 
+    ? `  <item>
+    <title>${escapeXml(`${monitor.name} - Monitor Initialized`)}</title>
+    <link>${escapeXml(`${frontendBase}/?monitor=${monitor.id}`)}</link>
+    <guid isPermaLink="false">${escapeXml(`${monitor.id}-init`)}</guid>
+    <pubDate>${new Date().toUTCString()}</pubDate>
+    <description><![CDATA[<p>Monitor configured. Waiting for scheduled crawl or manual check to capture initial baseline snapshot.</p>]]></description>
+  </item>`
+    : snapshots.map((s, idx) => {
+        const isBaseline = idx === (snapshots.length - 1);
+        const versionNum = snapshots.length - idx;
+        const itemTitle = isBaseline 
+          ? `v${versionNum} [Baseline]: Initial baseline recorded`
+          : `v${versionNum} [Change Detected]: ${s.summary || 'Content updated'}`;
+        const itemLink = `${frontendBase}/?monitor=${monitor.id}&amp;snap=${s.id}&amp;view=diff`;
+        const screenshotImg = s.screenshotUrl
+          ? (s.screenshotUrl.startsWith('http') || s.screenshotUrl.startsWith('data:') 
+              ? s.screenshotUrl 
+              : `${backendBase}${s.screenshotUrl}`)
+          : null;
+
+        return `  <item>
+    <title>${escapeXml(itemTitle)}</title>
+    <link>${escapeXml(itemLink)}</link>
+    <guid isPermaLink="false">${escapeXml(`${monitor.id}-${s.id}`)}</guid>
+    <pubDate>${new Date(s.timestamp).toUTCString()}</pubDate>
+    <description><![CDATA[
+      <p><strong>${isBaseline ? 'Baseline Details:' : 'Change Summary:'}</strong> ${escapeXml(s.summary || (isBaseline ? 'Initial snapshot captured' : 'Content updated'))}</p>
+      ${!isBaseline ? `<p><strong>Diff Statistics:</strong> +${s.diffStats?.addedLines || 0} / -${s.diffStats?.removedLines || 0} lines (${s.diffStats?.changedPercent || 0}% change)</p>` : ''}
+      <p><strong>Content Hash:</strong> <code>${escapeXml(s.contentHash)}</code></p>
+      ${screenshotImg ? `<p><img src="${escapeXml(screenshotImg)}" alt="Snapshot Preview" style="max-width:550px; border-radius:6px;"/></p>` : ''}
+      <p><a href="${escapeXml(itemLink)}">View interactive diff &amp; slider on WatchTower</a></p>
+    ]]></description>
+  </item>`;
+      }).join('\n');
+
   const rssXml = `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
 <channel>
@@ -213,29 +250,7 @@ apiRouter.get('/monitors/:id/rss', (req, res) => {
   <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
   <generator>WatchTower Website Change Detector</generator>
   <atom:link href="${escapeXml(`${backendBase}/api/monitors/${monitor.id}/rss`)}" rel="self" type="application/rss+xml" />
-  ${snapshots.map((s, idx) => {
-    const itemTitle = s.summary || `Version ${snapshots.length - idx} Detected`;
-    const itemLink = `${frontendBase}/?monitor=${monitor.id}&amp;snap=${s.id}&amp;view=diff`;
-    const screenshotImg = s.screenshotUrl
-      ? (s.screenshotUrl.startsWith('http') || s.screenshotUrl.startsWith('data:') 
-          ? s.screenshotUrl 
-          : `${backendBase}${s.screenshotUrl}`)
-      : null;
-
-    return `  <item>
-    <title>${escapeXml(`v${snapshots.length - idx}: ${itemTitle}`)}</title>
-    <link>${escapeXml(itemLink)}</link>
-    <guid isPermaLink="false">${escapeXml(`${monitor.id}-${s.id}`)}</guid>
-    <pubDate>${new Date(s.timestamp).toUTCString()}</pubDate>
-    <description><![CDATA[
-      <p><strong>Change Summary:</strong> ${escapeXml(s.summary || 'Content updated')}</p>
-      <p><strong>Diff Statistics:</strong> +${s.diffStats?.addedLines || 0} / -${s.diffStats?.removedLines || 0} lines (${s.diffStats?.changedPercent || 0}% change)</p>
-      <p><strong>Content Hash:</strong> <code>${escapeXml(s.contentHash)}</code></p>
-      ${screenshotImg ? `<p><img src="${escapeXml(screenshotImg)}" alt="Snapshot Preview" style="max-width:550px; border-radius:6px;"/></p>` : ''}
-      <p><a href="${escapeXml(itemLink)}">View interactive diff &amp; slider on WatchTower</a></p>
-    ]]></description>
-  </item>`;
-  }).join('\n')}
+${rssItems}
 </channel>
 </rss>`;
 
@@ -272,25 +287,70 @@ apiRouter.post('/diff/compare', async (req, res) => {
     return res.status(404).json({ error: 'One or both snapshots could not be found' });
   }
 
+  // Generate fresh signed URLs for screenshots if stored in private Supabase bucket
+  const enrichedSnapA = { ...snapA };
+  const enrichedSnapB = { ...snapB };
+
+  if (snapA.screenshotStoragePath) {
+    const signedA = await getSignedUrl(snapA.screenshotStoragePath, 3600);
+    if (signedA?.success && signedA?.signedUrl) {
+      enrichedSnapA.screenshotSignedUrl = signedA.signedUrl;
+    }
+  }
+
+  if (snapB.screenshotStoragePath) {
+    const signedB = await getSignedUrl(snapB.screenshotStoragePath, 3600);
+    if (signedB?.success && signedB?.signedUrl) {
+      enrichedSnapB.screenshotSignedUrl = signedB.signedUrl;
+    }
+  }
+
   // 1. Text Diff
   const textDiffResult = computeTextDiff(snapA.filteredText, snapB.filteredText);
 
-  // 2. Visual Screenshot Diff
-  let visualDiffResult = { hasDiff: false, diffPercentage: 0, diffImageUrl: null };
-  if (snapA.screenshotUrl && snapB.screenshotUrl && !snapA.screenshotUrl.startsWith('data:') && !snapB.screenshotUrl.startsWith('data:')) {
-    visualDiffResult = await computeVisualScreenshotDiff(snapA.screenshotUrl, snapB.screenshotUrl);
+  // 2. Visual Screenshot Diff (supports Supabase Storage and local fallback)
+  let visualDiffResult = { hasDiff: false, diffPercentage: 0, diffImageUrl: null, diffSignedUrl: null };
+  const hasA = Boolean(snapA.screenshotStoragePath || (snapA.screenshotUrl && !snapA.screenshotUrl.startsWith('data:')));
+  const hasB = Boolean(snapB.screenshotStoragePath || (snapB.screenshotUrl && !snapB.screenshotUrl.startsWith('data:')));
+
+  if (hasA && hasB) {
+    visualDiffResult = await computeVisualScreenshotDiff(
+      snapA.screenshotUrl, 
+      snapB.screenshotUrl,
+      snapA.screenshotStoragePath,
+      snapB.screenshotStoragePath
+    );
   }
 
   // 3. AI / NLP One-Line Summary
   const summary = generateChangeSummary(snapA.filteredText, snapB.filteredText, textDiffResult.stats);
 
   res.json({
-    snapA,
-    snapB,
+    snapA: enrichedSnapA,
+    snapB: enrichedSnapB,
     textDiff: textDiffResult,
     visualDiff: visualDiffResult,
     summary
   });
+});
+
+// Endpoint to generate or refresh a signed screenshot URL
+apiRouter.get('/screenshots/signed/:snapshotId', async (req, res) => {
+  const snapshot = db.getSnapshot(req.params.snapshotId);
+  if (!snapshot) return res.status(404).json({ error: 'Snapshot not found' });
+
+  if (snapshot.screenshotStoragePath) {
+    const signed = await getSignedUrl(snapshot.screenshotStoragePath, 3600);
+    if (signed?.success && signed?.signedUrl) {
+      return res.json({ success: true, signedUrl: signed.signedUrl, storagePath: snapshot.screenshotStoragePath });
+    }
+  }
+
+  // Fallback to local server URL
+  const host = req.get('host') || 'localhost:3001';
+  const protocol = req.protocol || 'http';
+  const localUrl = snapshot.screenshotUrl ? `${protocol}://${host}${snapshot.screenshotUrl}` : null;
+  res.json({ success: Boolean(localUrl), signedUrl: localUrl, fallback: true });
 });
 
 // -------------------------------------------------------------

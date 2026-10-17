@@ -259,9 +259,12 @@ Sent by WatchTower at ${new Date(payload.timestamp).toLocaleString()}
         console.log(`[RESEND SUCCESS] Email sent to ${recipient} (id: ${data.id})`);
         return { success: true, provider: 'resend', id: data.id };
       } else {
-        const errMsg = data.message || `HTTP ${res.status}`;
+        let errMsg = data.message || `HTTP ${res.status}`;
+        if (data.statusCode === 403 || errMsg.includes('only send testing emails') || errMsg.includes('testing')) {
+          errMsg = `${errMsg} — Resend testing sender (onboarding@resend.dev) requires sending to your registered Resend account owner email. For arbitrary recipients, configure a verified domain in Resend.`;
+        }
         console.error(`[RESEND ERROR] Failed sending to ${recipient}: ${errMsg}`);
-        return { success: false, provider: 'resend', error: errMsg };
+        return { success: false, provider: 'resend', error: errMsg, statusCode: res.status };
       }
     } catch (err) {
       console.error(`[RESEND EXCEPTION] Failed sending to ${recipient}:`, err.message);

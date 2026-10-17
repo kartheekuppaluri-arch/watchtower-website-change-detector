@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { PNG } = require('pngjs');
 const pixelmatch = require('pixelmatch');
+const { downloadScreenshotBuffer, uploadScreenshot, getSignedUrl } = require('./storage');
 const isVercel = Boolean(process.env.VERCEL);
 const DATA_DIR = process.env.DATA_DIR || process.env.PERSISTENT_DATA_DIR || (isVercel ? path.join('/tmp', 'data') : path.join(__dirname, '..', '..', 'data'));
 const SCREENSHOTS_DIR = path.join(DATA_DIR, 'screenshots');
@@ -45,24 +46,49 @@ function computeTextDiff(oldText = '', newText = '') {
  * Compare two screenshots visually using pixelmatch
  * Produces a visual diff PNG with red/magenta highlight masks
  */
-async function computeVisualScreenshotDiff(oldScreenshotUrl, newScreenshotUrl) {
-  if (!oldScreenshotUrl || !newScreenshotUrl) {
-    return { hasDiff: false, diffPercentage: 0, diffImageUrl: null };
+async function computeVisualScreenshotDiff(oldScreenshotUrl, newScreenshotUrl, oldStoragePath = '', newStoragePath = '') {
+  if (!oldScreenshotUrl && !oldStoragePath) {
+    return { hasDiff: false, diffPercentage: 0, diffImageUrl: null, diffSignedUrl: null };
+  }
+  if (!newScreenshotUrl && !newStoragePath) {
+    return { hasDiff: false, diffPercentage: 0, diffImageUrl: null, diffSignedUrl: null };
   }
 
-  const oldFile = path.basename(oldScreenshotUrl);
-  const newFile = path.basename(newScreenshotUrl);
+  let buf1 = null;
+  let buf2 = null;
 
-  const oldPath = path.join(SCREENSHOTS_DIR, oldFile);
-  const newPath = path.join(SCREENSHOTS_DIR, newFile);
+  // 1. Try downloading from Supabase Storage first if storage paths exist
+  if (oldStoragePath) {
+    buf1 = await downloadScreenshotBuffer(oldStoragePath);
+  }
+  if (newStoragePath) {
+    buf2 = await downloadScreenshotBuffer(newStoragePath);
+  }
 
-  if (!fs.existsSync(oldPath) || !fs.existsSync(newPath)) {
-    return { hasDiff: false, diffPercentage: 0, diffImageUrl: null };
+  // 2. If either buffer is missing, fallback to local filesystem
+  if (!buf1 && oldScreenshotUrl) {
+    const oldFile = path.basename(oldScreenshotUrl);
+    const oldPath = path.join(SCREENSHOTS_DIR, oldFile);
+    if (fs.existsSync(oldPath)) {
+      buf1 = fs.readFileSync(oldPath);
+    }
+  }
+
+  if (!buf2 && newScreenshotUrl) {
+    const newFile = path.basename(newScreenshotUrl);
+    const newPath = path.join(SCREENSHOTS_DIR, newFile);
+    if (fs.existsSync(newPath)) {
+      buf2 = fs.readFileSync(newPath);
+    }
+  }
+
+  if (!buf1 || !buf2) {
+    return { hasDiff: false, diffPercentage: 0, diffImageUrl: null, diffSignedUrl: null };
   }
 
   try {
-    const img1 = PNG.sync.read(fs.readFileSync(oldPath));
-    const img2 = PNG.sync.read(fs.readFileSync(newPath));
+    const img1 = PNG.sync.read(buf1);
+    const img2 = PNG.sync.read(buf2);
 
     // Normalize width/height to match
     const width = Math.min(img1.width, img2.width);
@@ -86,20 +112,41 @@ async function computeVisualScreenshotDiff(oldScreenshotUrl, newScreenshotUrl) {
     const totalPixels = width * height;
     const diffPercentage = ((numDiffPixels / totalPixels) * 100).toFixed(2);
 
-    const diffFileName = `diff-${Date.now()}-${oldFile.slice(0, 8)}-${newFile.slice(0, 8)}.png`;
+    const diffFileName = `diff-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
     const diffPath = path.join(SCREENSHOTS_DIR, diffFileName);
 
+    try {
+      if (!fs.existsSync(SCREENSHOTS_DIR)) {
+        fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+      }
+    } catch (_) {}
+
     fs.writeFileSync(diffPath, PNG.sync.write(diff));
+
+    let diffSignedUrl = null;
+    const remoteDiffPath = `diffs/${diffFileName}`;
+    try {
+      const uploadRes = await uploadScreenshot(diffPath, remoteDiffPath);
+      if (uploadRes?.success) {
+        const signed = await getSignedUrl(remoteDiffPath, 3600);
+        if (signed?.success) {
+          diffSignedUrl = signed.signedUrl;
+        }
+      }
+    } catch (diffUploadErr) {
+      console.warn('[DIFF] Non-fatal diff upload note:', diffUploadErr.message);
+    }
 
     return {
       hasDiff: numDiffPixels > 0,
       diffPixels: numDiffPixels,
       diffPercentage: parseFloat(diffPercentage),
-      diffImageUrl: `/api/screenshots/${diffFileName}`
+      diffImageUrl: `/api/screenshots/${diffFileName}`,
+      diffSignedUrl
     };
   } catch (err) {
     console.error('Visual diff failed:', err);
-    return { hasDiff: false, diffPercentage: 0, diffImageUrl: null };
+    return { hasDiff: false, diffPercentage: 0, diffImageUrl: null, diffSignedUrl: null };
   }
 }
 

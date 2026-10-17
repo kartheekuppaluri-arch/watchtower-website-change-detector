@@ -17,7 +17,7 @@ export default function App() {
   const [monitors, setMonitors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isRunningAll, setIsRunningAll] = useState(false);
-  const [testStudioOpen, setTestStudioOpen] = useState(true);
+  const [testStudioOpen, setTestStudioOpen] = useState(false);
 
   // View state: 'landing' (Default public experience) | 'dashboard' | 'about'
   const [activeView, setActiveView] = useState(() => {
@@ -32,6 +32,11 @@ export default function App() {
   const [activeModal, setActiveModal] = useState(null); // 'add', 'diff', 'picker', 'timeline', 'faq', 'alerts', 'digest'
   const [selectedMonitor, setSelectedMonitor] = useState(null);
 
+  // Enforce scroll-to-top whenever active view changes or on initial page load
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [activeView]);
+
   // Listen to hash and popstate changes for seamless browser navigation
   useEffect(() => {
     const handleUrlChange = () => {
@@ -44,6 +49,7 @@ export default function App() {
       } else {
         setActiveView('landing');
       }
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     };
     window.addEventListener('hashchange', handleUrlChange);
     window.addEventListener('popstate', handleUrlChange);
@@ -55,6 +61,7 @@ export default function App() {
 
   const handleSelectView = (view) => {
     setActiveView(view);
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     if (view === 'about') {
       window.location.hash = 'about';
     } else if (view === 'dashboard') {

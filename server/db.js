@@ -214,6 +214,7 @@ class Database {
       rawText: snapshot.rawText || '',
       filteredText: snapshot.filteredText || '',
       screenshotUrl: snapshot.screenshotUrl || '',
+      screenshotStoragePath: snapshot.screenshotStoragePath || '',
       diffStats: snapshot.diffStats || { addedLines: 0, removedLines: 0, changedPercent: 0 },
       summary: snapshot.summary || 'Initial snapshot recorded',
       numberValue: snapshot.numberValue !== undefined ? snapshot.numberValue : null

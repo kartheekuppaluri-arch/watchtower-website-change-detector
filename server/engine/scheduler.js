@@ -145,7 +145,7 @@ class Scheduler {
 
         // Deduplicate fetch if another check for same URL is already running
         crawlResult = await this.deduplicator.fetch(monitor.url, async () => {
-          return await crawlWithBrowser(monitor.url, { timeoutMs });
+          return await crawlWithBrowser(monitor.url, { timeoutMs, monitorId: monitor.id });
         });
 
         this.rateLimiter.releaseLock(monitor.url);
@@ -235,6 +235,7 @@ class Scheduler {
         rawText,
         filteredText: cleanedText,
         screenshotUrl: crawlResult.screenshotUrl,
+        screenshotStoragePath: crawlResult.screenshotStoragePath || '',
         diffStats,
         summary: 'Initial baseline captured',
         numberValue: numericMetric
@@ -281,6 +282,7 @@ class Scheduler {
           rawText,
           filteredText: cleanedText,
           screenshotUrl: crawlResult.screenshotUrl,
+          screenshotStoragePath: crawlResult.screenshotStoragePath || '',
           diffStats,
           summary,
           numberValue: numericMetric

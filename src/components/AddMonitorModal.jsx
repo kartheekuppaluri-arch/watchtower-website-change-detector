@@ -27,6 +27,8 @@ export default function AddMonitorModal({ monitor, onClose, onSave }) {
   const [alertWebhook, setAlertWebhook] = useState(monitor?.alertWebhook || '');
   const [testingWebhook, setTestingWebhook] = useState(false);
   const [webhookTestMsg, setWebhookTestMsg] = useState('');
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [emailTestMsg, setEmailTestMsg] = useState('');
 
   // Lock background scroll and add Escape listener while modal is open
   useEffect(() => {
@@ -85,6 +87,25 @@ export default function AddMonitorModal({ monitor, onClose, onSave }) {
         setWebhookTestMsg('Webhook request failed: ' + err.message);
       })
       .finally(() => setTestingWebhook(false));
+  };
+
+  const testEmailHandler = () => {
+    if (!alertEmail) return;
+    setTestingEmail(true);
+    setEmailTestMsg('');
+    apiFetch('/api/alerts/test-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: alertEmail, monitorName: name || 'Test Monitor' })
+    })
+      .then(r => r.json())
+      .then(data => {
+        setEmailTestMsg(data.message);
+      })
+      .catch(err => {
+        setEmailTestMsg('Email test failed: ' + err.message);
+      })
+      .finally(() => setTestingEmail(false));
   };
 
   const handleSubmit = (e) => {
@@ -325,14 +346,31 @@ export default function AddMonitorModal({ monitor, onClose, onSave }) {
               </span>
 
               <div className="form-group">
-                <label className="form-label" style={{ fontSize: '12px' }}>Email Address</label>
-                <input 
-                  type="email" 
-                  className="form-input" 
-                  value={alertEmail} 
-                  onChange={e => setAlertEmail(e.target.value)} 
-                  placeholder="alerts@example.com" 
-                />
+                <label className="form-label" style={{ fontSize: '12px' }}>Email Address (Instant change alerts)</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input 
+                    type="email" 
+                    className="form-input" 
+                    value={alertEmail} 
+                    onChange={e => setAlertEmail(e.target.value)} 
+                    placeholder="alerts@example.com" 
+                    style={{ flex: 1 }}
+                  />
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-sm"
+                    onClick={testEmailHandler}
+                    disabled={!alertEmail || testingEmail}
+                  >
+                    <Send size={12} />
+                    {testingEmail ? 'Testing...' : 'Test Email'}
+                  </button>
+                </div>
+                {emailTestMsg && (
+                  <div style={{ fontSize: '11px', color: emailTestMsg.includes('✅') ? '#34d399' : '#f87171', marginTop: '4px' }}>
+                    {emailTestMsg}
+                  </div>
+                )}
               </div>
 
               <div className="form-group" style={{ marginBottom: 0 }}>

@@ -293,11 +293,29 @@ export default function DiffModal({ monitor, onClose }) {
           {activeTab === 'slider' && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '12px', color: 'var(--text-dim)' }}>
-                <span>Drag the vertical cyan slider left/right to compare Before (Base) vs After (Target)</span>
+                <span>Drag the vertical cyan slider left/right to compare Base (Old) vs Target (New)</span>
                 <span>Split Position: {sliderPos}%</span>
               </div>
 
-              {snapA?.screenshotUrl && snapB?.screenshotUrl ? (
+              {snapshots.length < 2 ? (
+                <div style={{ padding: '60px 24px', textAlign: 'center', background: '#090d16', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ color: 'var(--cyan-400)', fontSize: '15px', fontWeight: 600, marginBottom: '8px' }}>
+                    Only 1 Snapshot Recorded (Baseline)
+                  </div>
+                  <p style={{ color: 'var(--text-dim)', fontSize: '13px', maxWidth: '440px', margin: '0 auto' }}>
+                    A visual comparison requires at least two versions. Modify the target webpage (or use the Live Test Lab below) and trigger another check to compare screenshots.
+                  </p>
+                </div>
+              ) : selectedA === selectedB ? (
+                <div style={{ padding: '60px 24px', textAlign: 'center', background: '#090d16', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ color: 'var(--amber-400)', fontSize: '15px', fontWeight: 600, marginBottom: '8px' }}>
+                    Identical Version Selected
+                  </div>
+                  <p style={{ color: 'var(--text-dim)', fontSize: '13px', maxWidth: '440px', margin: '0 auto' }}>
+                    Base Version and Target Version are the same. Please select two different versions from the dropdowns above to compare.
+                  </p>
+                </div>
+              ) : (snapA?.screenshotSignedUrl || snapA?.screenshotUrl) && (snapB?.screenshotSignedUrl || snapB?.screenshotUrl) ? (
                 <div 
                   className="visual-slider-container" 
                   ref={sliderRef}
@@ -305,31 +323,38 @@ export default function DiffModal({ monitor, onClose }) {
                   onTouchStart={handleMouseDown}
                   onClick={handleSliderMove}
                 >
-                  {/* Base Screenshot (Before) */}
+                  {/* Base Screenshot (Before / Old) */}
                   <img 
-                    src={apiUrl(snapA.screenshotUrl)} 
-                    alt="Before Screenshot" 
+                    src={snapA.screenshotSignedUrl || apiUrl(snapA.screenshotUrl)} 
+                    alt="Base Version Screenshot" 
                     className="visual-image" 
                   />
 
-                  {/* Target Screenshot (After) - Clipped */}
+                  {/* Target Screenshot (After / New) - Clipped via CSS clip-path */}
+                  <img 
+                    src={snapB.screenshotSignedUrl || apiUrl(snapB.screenshotUrl)} 
+                    alt="Target Version Screenshot" 
+                    className="visual-image"
+                    style={{
+                      clipPath: `inset(0 ${100 - sliderPos}% 0 0)`,
+                      WebkitClipPath: `inset(0 ${100 - sliderPos}% 0 0)`
+                    }}
+                  />
+
+                  {/* Divider Line */}
                   <div 
-                    className="visual-slider-after" 
-                    style={{ width: `${sliderPos}%`, borderRight: '2px solid var(--cyan-400)' }}
-                  >
-                    <img 
-                      src={apiUrl(snapB.screenshotUrl)} 
-                      alt="After Screenshot" 
-                      style={{ 
-                        position: 'absolute', 
-                        top: 0, 
-                        left: 0, 
-                        width: sliderRef.current ? `${sliderRef.current.offsetWidth}px` : '100%', 
-                        height: '100%', 
-                        objectFit: 'contain' 
-                      }} 
-                    />
-                  </div>
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      bottom: 0,
+                      left: `${sliderPos}%`,
+                      width: '2px',
+                      background: 'var(--cyan-400)',
+                      boxShadow: '0 0 10px rgba(56, 189, 248, 0.9)',
+                      pointerEvents: 'none',
+                      zIndex: 8
+                    }}
+                  />
 
                   {/* Drag Handle */}
                   <div 
@@ -342,8 +367,13 @@ export default function DiffModal({ monitor, onClose }) {
                   </div>
                 </div>
               ) : (
-                <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-dim)' }}>
-                  Screenshots not available for one or both selected versions.
+                <div style={{ padding: '60px 24px', textAlign: 'center', background: '#090d16', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '8px' }}>
+                    Screenshots not available for one or both selected versions.
+                  </div>
+                  <p style={{ color: 'var(--text-dim)', fontSize: '12px' }}>
+                    Ensure the crawler is capturing screenshots or check Supabase Storage connection.
+                  </p>
                 </div>
               )}
             </div>
@@ -357,7 +387,7 @@ export default function DiffModal({ monitor, onClose }) {
                 <span>Visual Difference: {diffData?.visualDiff?.diffPercentage || 0}% pixels</span>
               </div>
 
-              {diffData?.visualDiff?.diffImageUrl ? (
+              {diffData?.visualDiff?.diffSignedUrl || diffData?.visualDiff?.diffImageUrl ? (
                 <div style={{ 
                   borderRadius: '10px', 
                   overflow: 'hidden', 
@@ -367,14 +397,18 @@ export default function DiffModal({ monitor, onClose }) {
                   padding: '10px'
                 }}>
                   <img 
-                    src={apiUrl(diffData.visualDiff.diffImageUrl)} 
+                    src={diffData.visualDiff.diffSignedUrl || apiUrl(diffData.visualDiff.diffImageUrl)} 
                     alt="Pixel Diff Highlight" 
                     style={{ maxHeight: '520px', maxWidth: '100%', objectFit: 'contain', borderRadius: '6px' }}
                   />
                 </div>
               ) : (
-                <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-dim)' }}>
-                  Pixel diff generating or no screenshot available for comparison.
+                <div style={{ padding: '60px 24px', textAlign: 'center', background: '#090d16', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '8px' }}>
+                    {snapshots.length < 2 
+                      ? 'Pixel diff requires at least two snapshots to compare.' 
+                      : 'Pixel diff image generating or screenshots not available.'}
+                  </div>
                 </div>
               )}
             </div>
