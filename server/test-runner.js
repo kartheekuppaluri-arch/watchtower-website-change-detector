@@ -59,15 +59,17 @@ async function runTests() {
   const port = server.address().port;
   process.env.BACKEND_URL = `http://localhost:${port}`;
 
-  // Test 3: Crawler synthetic screenshot generation
+  // Test 3: Crawler genuine headless browser screenshot capture
   try {
-    const { crawlWithHttp } = require('../server/engine/crawler');
-    const result = await crawlWithHttp('/mock/store');
+    const { crawlWithBrowser } = require('../server/engine/crawler');
+    const result = await crawlWithBrowser('/mock/store');
     assert.ok(result.success, 'Mock store crawl should succeed');
     assert.ok(result.screenshotUrl, 'Should have screenshotUrl');
     assert.ok(result.screenshotFullPath, 'Should have screenshotFullPath');
     assert.ok(fs.existsSync(result.screenshotFullPath), 'Screenshot PNG file must exist on disk');
-    console.log('✅ Test 3: Crawler captures/creates real PNG screenshot file');
+    const stat = fs.statSync(result.screenshotFullPath);
+    assert.ok(stat.size > 5000, `Screenshot must contain real pixel content (got ${stat.size} bytes)`);
+    console.log(`✅ Test 3: Crawler captures genuine PNG screenshot with real pixels (${stat.size} bytes)`);
     passed++;
   } catch (err) {
     console.error('❌ Test 3 failed:', err.message);
@@ -93,9 +95,9 @@ async function runTests() {
   // Test 5: Visual Diff Engine
   try {
     const { computeVisualScreenshotDiff } = require('../server/engine/differ');
-    const { crawlWithHttp } = require('../server/engine/crawler');
-    const snap1 = await crawlWithHttp('/mock/store');
-    const snap2 = await crawlWithHttp('/mock/news');
+    const { crawlWithBrowser } = require('../server/engine/crawler');
+    const snap1 = await crawlWithBrowser('/mock/store');
+    const snap2 = await crawlWithBrowser('/mock/news');
     const visual = await computeVisualScreenshotDiff(snap1.screenshotUrl, snap2.screenshotUrl);
     assert.strictEqual(typeof visual.diffPercentage, 'number');
     assert.ok(visual.diffImageUrl, 'Should output diffImageUrl');

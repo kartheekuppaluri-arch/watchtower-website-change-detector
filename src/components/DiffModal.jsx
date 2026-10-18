@@ -189,7 +189,7 @@ export default function DiffModal({ monitor, onClose }) {
                 <Layers size={13} style={{ display: 'inline', marginRight: 4 }} />
                 Pixel Diff
               </button>
-              {monitor.numberTracking && (
+              {(monitor.numberTracking || snapshots.some(s => typeof s.numberValue === 'number')) && (
                 <button 
                   className={`diff-tab ${activeTab === 'chart' ? 'active' : ''}`}
                   onClick={() => setActiveTab('chart')}
@@ -415,49 +415,201 @@ export default function DiffModal({ monitor, onClose }) {
           )}
 
           {/* TAB 4: METRIC TREND CHART */}
-          {activeTab === 'chart' && (
-            <div>
-              <div style={{ marginBottom: '14px', fontSize: '13px', color: 'var(--text-muted)' }}>
-                Tracked Metric Values Across Snapshots (e.g. Price History / Inventory Trend):
-              </div>
-              
-              <div style={{ 
-                background: '#090d16', 
-                border: '1px solid var(--border-subtle)', 
-                borderRadius: '10px', 
-                padding: '24px',
-                minHeight: '260px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '20px', height: '180px', paddingBottom: '20px' }}>
-                  {snapshots.filter(s => s.numberValue !== null).map((s, idx, arr) => {
-                    const maxVal = Math.max(...arr.map(x => x.numberValue || 1));
-                    const heightPercent = Math.max(15, Math.round(((s.numberValue || 1) / maxVal) * 100));
-                    return (
-                      <div key={s.id} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--emerald-400)' }}>
-                          ${s.numberValue}
-                        </span>
-                        <div style={{ 
-                          width: '100%', 
-                          maxWidth: '44px', 
-                          height: `${heightPercent}%`, 
-                          background: 'var(--accent-primary)', 
-                          borderRadius: '4px 4px 0 0',
-                          opacity: 0.9
-                        }} />
-                        <span style={{ fontSize: '10px', color: 'var(--text-dim)', textAlign: 'center' }}>
-                          v{snapshots.length - idx}
-                        </span>
-                      </div>
-                    );
-                  })}
+          {activeTab === 'chart' && (() => {
+            // Sort chronologically (oldest v1 on the left, newest on the right)
+            const chronologicalSnaps = [...snapshots]
+              .reverse()
+              .map((s, i) => ({ ...s, versionNumber: i + 1 }));
+
+            const metricSnaps = chronologicalSnaps.filter(
+              s => typeof s.numberValue === 'number' && !isNaN(s.numberValue)
+            );
+
+            if (metricSnaps.length === 0) {
+              return (
+                <div style={{ padding: '60px 24px', textAlign: 'center', background: '#090d16', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
+                  <TrendingUp size={36} color="var(--accent-primary)" style={{ margin: '0 auto 12px' }} />
+                  <div style={{ color: 'var(--text-main)', fontSize: '15px', fontWeight: 600, marginBottom: '6px' }}>
+                    No Numeric Metric Data Recorded
+                  </div>
+                  <p style={{ color: 'var(--text-dim)', fontSize: '13px', maxWidth: '440px', margin: '0 auto' }}>
+                    Enable <strong>"Number/Price Tracking"</strong> in monitor settings and trigger checks to record numeric changes (prices, inventory counts, or metric values) over time.
+                  </p>
+                </div>
+              );
+            }
+
+            const values = metricSnaps.map(s => s.numberValue);
+            const minVal = Math.min(...values);
+            const maxVal = Math.max(...values);
+            const valRange = maxVal - minVal;
+
+            const baseSnap = snapshots.find(s => s.id === selectedB);
+            const targetSnap = snapshots.find(s => s.id === selectedA);
+            const baseVal = typeof baseSnap?.numberValue === 'number' ? baseSnap.numberValue : null;
+            const targetVal = typeof targetSnap?.numberValue === 'number' ? targetSnap.numberValue : null;
+            const hasDelta = baseVal !== null && targetVal !== null && baseSnap?.id !== targetSnap?.id;
+            const diffVal = hasDelta ? targetVal - baseVal : null;
+            const diffPct = hasDelta && baseVal !== 0 ? ((diffVal / baseVal) * 100).toFixed(1) : null;
+
+            // Check if currency detected in text
+            const isCurrency = metricSnaps.some(s => /[$€£¥]/.test(s.filteredText || s.rawText || s.textSnippet || ''));
+            const formatMetric = (val) => isCurrency ? `$${Number(val).toFixed(2)}` : String(val);
+
+            return (
+              <div>
+                {/* Metric Summary Header */}
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  marginBottom: '14px', 
+                  flexWrap: 'wrap', 
+                  gap: '10px' 
+                }}>
+                  <div>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-main)' }}>
+                      Metric Timeline ({metricSnaps.length} {metricSnaps.length === 1 ? 'record' : 'records'})
+                    </span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-dim)', marginLeft: '10px' }}>
+                      Range: {formatMetric(minVal)} — {formatMetric(maxVal)}
+                    </span>
+                  </div>
+
+                  {hasDelta && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: diffVal < 0 ? 'rgba(52, 211, 153, 0.1)' : diffVal > 0 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(148, 163, 184, 0.1)',
+                      border: `1px solid ${diffVal < 0 ? 'rgba(52, 211, 153, 0.3)' : diffVal > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(148, 163, 184, 0.3)'}`,
+                      padding: '4px 12px',
+                      borderRadius: '6px',
+                      fontSize: '12px'
+                    }}>
+                      <span style={{ color: 'var(--text-dim)' }}>Base vs Target:</span>
+                      <strong style={{ color: diffVal < 0 ? 'var(--emerald-400)' : diffVal > 0 ? 'var(--rose-400)' : 'var(--text-main)' }}>
+                        {diffVal > 0 ? `+${formatMetric(diffVal)}` : formatMetric(diffVal)} ({diffPct > 0 ? `+${diffPct}%` : `${diffPct}%`})
+                      </strong>
+                    </div>
+                  )}
+                </div>
+
+                {/* Trend Chart Area */}
+                <div style={{ 
+                  background: '#090d16', 
+                  border: '1px solid var(--border-subtle)', 
+                  borderRadius: '10px', 
+                  padding: '28px 24px 20px',
+                  minHeight: '260px',
+                  position: 'relative'
+                }}>
+                  {/* Visual Chart Bars */}
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'flex-end', 
+                    gap: metricSnaps.length > 8 ? '8px' : '24px', 
+                    height: '180px', 
+                    paddingBottom: '26px',
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.08)'
+                  }}>
+                    {metricSnaps.map((s) => {
+                      const isBase = s.id === selectedB;
+                      const isTarget = s.id === selectedA;
+                      const isSelected = isBase || isTarget;
+
+                      const heightPercent = valRange === 0
+                        ? 50
+                        : Math.max(16, Math.min(100, Math.round(((s.numberValue - minVal) / valRange) * 80 + 18)));
+
+                      return (
+                        <div 
+                          key={s.id} 
+                          onClick={() => {
+                            setSelectedA(s.id);
+                          }}
+                          style={{ 
+                            flex: 1, 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            alignItems: 'center', 
+                            gap: '8px',
+                            cursor: 'pointer',
+                            transition: 'transform 0.2s ease',
+                            transform: isSelected ? 'scale(1.05)' : 'none'
+                          }}
+                          title={`Version v${s.versionNumber} • ${new Date(s.timestamp).toLocaleString()} • ${formatMetric(s.numberValue)}`}
+                        >
+                          {/* Value Tag */}
+                          <span style={{ 
+                            fontSize: '12px', 
+                            fontWeight: 700, 
+                            color: isTarget ? 'var(--cyan-400)' : isBase ? 'var(--violet-400)' : 'var(--emerald-400)',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {formatMetric(s.numberValue)}
+                          </span>
+
+                          {/* Bar */}
+                          <div style={{ 
+                            width: '100%', 
+                            maxWidth: '44px', 
+                            height: `${heightPercent}%`, 
+                            background: isTarget
+                              ? 'linear-gradient(180deg, var(--cyan-400), var(--cyan-600))'
+                              : isBase
+                                ? 'linear-gradient(180deg, var(--violet-400), var(--violet-600))'
+                                : 'linear-gradient(180deg, rgba(56, 189, 248, 0.6), rgba(14, 165, 233, 0.2))', 
+                            borderRadius: '5px 5px 0 0',
+                            boxShadow: isSelected 
+                              ? `0 0 12px ${isTarget ? 'rgba(56, 189, 248, 0.5)' : 'rgba(139, 92, 246, 0.5)'}` 
+                              : 'none',
+                            transition: 'all 0.3s ease'
+                          }} />
+
+                          {/* Version Label */}
+                          <div style={{ textAlign: 'center', marginTop: '4px' }}>
+                            <div style={{ 
+                              fontSize: '11px', 
+                              fontWeight: isSelected ? 700 : 500,
+                              color: isTarget ? 'var(--cyan-400)' : isBase ? 'var(--violet-400)' : 'var(--text-muted)' 
+                            }}>
+                              v{s.versionNumber}
+                            </div>
+                            <div style={{ fontSize: '9.5px', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
+                              {new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Chart Legend */}
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    gap: '20px', 
+                    marginTop: '14px', 
+                    fontSize: '11.5px', 
+                    color: 'var(--text-dim)' 
+                  }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--violet-400)' }} />
+                      Base Version (Old): v{baseSnap ? (snapshots.length - snapshots.indexOf(baseSnap)) : '?'}
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: 'var(--cyan-400)' }} />
+                      Target Version (New): v{targetSnap ? (snapshots.length - snapshots.indexOf(targetSnap)) : '?'}
+                    </span>
+                    <span style={{ color: 'var(--text-dim)' }}>
+                      • Click any bar to select as Target
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Footer */}

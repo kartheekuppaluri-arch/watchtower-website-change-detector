@@ -5,6 +5,7 @@
   "main": "server/index.js",
   "scripts": {
     "build": "vite build",
+    "render-build": "npx puppeteer browsers install chrome && vite build",
     "server": "node server/index.js",
     "dev:frontend": "vite",
     "build:frontend": "vite build",
@@ -21,6 +22,7 @@
     "nodemailer": "^10.1.2",
     "pixelmatch": "^5.3.0",
     "pngjs": "^7.0.0",
+    "puppeteer": "^24.4.0",
     "puppeteer-core": "^24.4.0",
     "uuid": "^11.1.0"
   },

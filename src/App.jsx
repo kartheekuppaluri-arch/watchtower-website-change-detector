@@ -35,6 +35,10 @@ export default function App() {
   // Enforce scroll-to-top whenever active view changes or on initial page load
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    const raf = requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    });
+    return () => cancelAnimationFrame(raf);
   }, [activeView]);
 
   // Listen to hash and popstate changes for seamless browser navigation

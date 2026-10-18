@@ -4,4 +4,6 @@ dist/
 .env.*
 !.env.example
 data/
+chrome/
+*.zip
 .DS_Store

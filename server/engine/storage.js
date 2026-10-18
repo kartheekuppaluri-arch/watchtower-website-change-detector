@@ -41,7 +41,7 @@ function getClient() {
  * @param {string} storagePath - Remote object path in bucket (e.g. monitors/mon-123/snap-abc.png)
  * @returns {Promise<{ success: boolean, storagePath: string, error?: string }>}
  */
-async function uploadScreenshot(localFilePath, storagePath) {
+async function uploadScreenshot(localFilePathOrBuffer, storagePath) {
   if (!isConfigured()) {
     return { success: false, storagePath: '', error: 'Supabase Storage is not configured' };
   }
@@ -52,11 +52,18 @@ async function uploadScreenshot(localFilePath, storagePath) {
   }
 
   try {
-    if (!fs.existsSync(localFilePath)) {
-      return { success: false, storagePath: '', error: `Local file not found: ${localFilePath}` };
+    let fileBuffer;
+    if (Buffer.isBuffer(localFilePathOrBuffer)) {
+      fileBuffer = localFilePathOrBuffer;
+    } else if (typeof localFilePathOrBuffer === 'string') {
+      if (!fs.existsSync(localFilePathOrBuffer)) {
+        return { success: false, storagePath: '', error: `Local file not found: ${localFilePathOrBuffer}` };
+      }
+      fileBuffer = fs.readFileSync(localFilePathOrBuffer);
+    } else {
+      return { success: false, storagePath: '', error: 'Invalid file or buffer parameter provided' };
     }
 
-    const fileBuffer = fs.readFileSync(localFilePath);
     const { data, error } = await client.storage
       .from(BUCKET_NAME)
       .upload(storagePath, fileBuffer, {
@@ -69,7 +76,7 @@ async function uploadScreenshot(localFilePath, storagePath) {
       return { success: false, storagePath: '', error: error.message };
     }
 
-    console.log(`[STORAGE] Uploaded screenshot to Supabase Storage: ${BUCKET_NAME}/${storagePath}`);
+    console.log(`[STORAGE] Uploaded screenshot to Supabase Storage: ${BUCKET_NAME}/${storagePath} (${fileBuffer.length} bytes)`);
     return { success: true, storagePath };
   } catch (err) {
     console.error(`[STORAGE] Exception during screenshot upload:`, err.message);

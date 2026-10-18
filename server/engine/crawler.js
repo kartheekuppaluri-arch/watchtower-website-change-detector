@@ -1,9 +1,18 @@
-const puppeteer = require('puppeteer-core');
+let puppeteer = null;
+try {
+  puppeteer = require('puppeteer');
+} catch (_) {
+  try {
+    puppeteer = require('puppeteer-core');
+  } catch (e) {
+    console.warn('[CRAWLER] Neither puppeteer nor puppeteer-core found:', e.message);
+  }
+}
+
 const cheerio = require('cheerio');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-
 const { PNG } = require('pngjs');
 const { uploadScreenshot } = require('./storage');
 
@@ -26,8 +35,27 @@ function resolveUrl(url) {
   return url;
 }
 
-// Auto-detect system browser executable across Linux (Render/Docker), Windows, and macOS
-function getBrowserExecutablePath() {
+function findExecutableInDir(dir, depth = 0) {
+  if (depth > 5) return null;
+  try {
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+      const full = path.join(dir, file);
+      const stat = fs.statSync(full);
+      if (stat.isDirectory()) {
+        const res = findExecutableInDir(full, depth + 1);
+        if (res) return res;
+      } else {
+        const isExe = file === 'chrome' || file === 'chrome.exe' || file === 'chromium' || file === 'chromium.exe';
+        if (isExe) return full;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+// Auto-detect browser executable across Render/Linux, Windows, and macOS
+async function getBrowserExecutablePath() {
   if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
     return process.env.PUPPETEER_EXECUTABLE_PATH;
   }
@@ -35,6 +63,50 @@ function getBrowserExecutablePath() {
     return process.env.CHROME_BIN;
   }
 
+  // On Windows: Check installed Chrome/Edge in Program Files first (guaranteed complete V8 snapshot & DLLs)
+  if (process.platform === 'win32') {
+    const winCandidates = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe')
+    ];
+    for (const p of winCandidates) {
+      try {
+        if (p && fs.existsSync(p)) return p;
+      } catch (_) {}
+    }
+  }
+
+  // 1. Check Puppeteer's own executablePath resolution
+  if (puppeteer && typeof puppeteer.executablePath === 'function') {
+    try {
+      const pPath = await Promise.resolve(puppeteer.executablePath());
+      if (pPath && fs.existsSync(pPath)) {
+        return pPath;
+      }
+    } catch (_) {}
+  }
+
+  // 2. Scan standard cache directories where Puppeteer installs Chromium (Render, Linux, Docker)
+  const cacheRoots = [
+    '/opt/render/project/src/.cache/puppeteer',
+    '/opt/render/.cache/puppeteer',
+    path.join(process.env.HOME || '', '.cache', 'puppeteer'),
+    path.join(process.cwd(), '.cache', 'puppeteer'),
+    path.join(process.env.USERPROFILE || '', '.cache', 'puppeteer')
+  ];
+
+  for (const root of cacheRoots) {
+    try {
+      if (root && fs.existsSync(root)) {
+        const found = findExecutableInDir(root);
+        if (found) return found;
+      }
+    } catch (_) {}
+  }
+
+  // 3. Scan system browser candidates on Linux / macOS
   const candidates = [
     // Linux / Render / Docker / Debian paths
     '/usr/bin/google-chrome-stable',
@@ -42,11 +114,6 @@ function getBrowserExecutablePath() {
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
     '/snap/bin/chromium',
-    // Windows paths
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-    path.join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
     // macOS paths
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/Applications/Chromium.app/Contents/MacOS/Chromium'
@@ -61,64 +128,6 @@ function getBrowserExecutablePath() {
   }
 
   return null;
-}
-
-/**
- * Creates a valid PNG fallback screenshot when headless browser binary is not present in runtime environment.
- * Ensures visual diff and frontend image preview always function reliably.
- */
-function createSyntheticScreenshot(title = 'Page Snapshot', status = 200, targetUrl = '') {
-  try {
-    if (!fs.existsSync(SCREENSHOTS_DIR)) {
-      fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
-    }
-
-    const width = 800;
-    const height = 500;
-    const png = new PNG({ width, height });
-
-    // Generate a sleek dashboard preview card PNG
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const idx = (width * y + x) << 2;
-        if (y < 42) {
-          // Top status bar: Slate-800
-          png.data[idx] = 30;
-          png.data[idx + 1] = 41;
-          png.data[idx + 2] = 59;
-          png.data[idx + 3] = 255;
-        } else if (y >= 42 && y <= 44) {
-          // Accent divider line
-          png.data[idx] = 14;
-          png.data[idx + 1] = 165;
-          png.data[idx + 2] = 233;
-          png.data[idx + 3] = 255;
-        } else {
-          // Card body gradient: Deep Slate
-          const grad = Math.min(20, Math.floor((y / height) * 20));
-          png.data[idx] = 15 + grad;
-          png.data[idx + 1] = 23 + grad;
-          png.data[idx + 2] = 42 + grad;
-          png.data[idx + 3] = 255;
-        }
-      }
-    }
-
-    const filename = `snap-${Date.now()}-${uuidv4().slice(0, 6)}.png`;
-    const fullPath = path.join(SCREENSHOTS_DIR, filename);
-    fs.writeFileSync(fullPath, PNG.sync.write(png));
-
-    return {
-      screenshotUrl: `/api/screenshots/${filename}`,
-      screenshotFullPath: fullPath
-    };
-  } catch (err) {
-    console.error('[CRAWLER] Could not create fallback screenshot PNG:', err.message);
-    return {
-      screenshotUrl: '',
-      screenshotFullPath: ''
-    };
-  }
 }
 
 /**
@@ -179,13 +188,13 @@ function inspectForOutageOrCaptcha(status, html, pageTitle = '') {
 }
 
 /**
- * Crawl a page using headless browser (Puppeteer) with screenshot capture
+ * Crawl a page using headless browser (Puppeteer) with full SPA hydration and validated screenshot capture
  */
 async function crawlWithBrowser(url, options = {}) {
   url = resolveUrl(url);
-  const execPath = getBrowserExecutablePath();
+  const execPath = await getBrowserExecutablePath();
   if (!execPath) {
-    console.log(`[CRAWLER] No local browser binary detected; falling back to high-speed Cheerio HTTP crawler for: ${url}`);
+    console.log(`[CRAWLER] No headless browser binary detected in runtime; using Cheerio HTTP fetch for: ${url}`);
     return await crawlWithHttp(url, options);
   }
 
@@ -214,8 +223,12 @@ async function crawlWithBrowser(url, options = {}) {
     });
 
     const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 800 });
+    await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36');
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
+    });
 
     let responseStatus = 200;
     page.on('response', response => {
@@ -224,9 +237,9 @@ async function crawlWithBrowser(url, options = {}) {
       }
     });
 
-    // Navigate to page
+    // 1. Navigate to page with dual event wait
     const response = await page.goto(url, {
-      waitUntil: 'networkidle2',
+      waitUntil: ['domcontentloaded', 'networkidle2'],
       timeout: timeoutMs
     });
 
@@ -234,33 +247,84 @@ async function crawlWithBrowser(url, options = {}) {
       responseStatus = response.status();
     }
 
+    // 2. Wait for document and fonts to fully complete
+    await page.evaluate(() => {
+      return Promise.all([
+        document.readyState === 'complete' ? Promise.resolve() : new Promise(r => window.addEventListener('load', r, { once: true })),
+        document.fonts ? document.fonts.ready : Promise.resolve()
+      ]);
+    }).catch(() => {});
+
+    // 3. If watchSelector is specified, wait for it to be rendered and visible in DOM
+    if (options.watchSelector && options.watchSelector.trim()) {
+      await page.waitForSelector(options.watchSelector.trim(), {
+        visible: true,
+        timeout: 6000
+      }).catch(() => {});
+    }
+
+    // 4. Wait for SPA hydration / non-empty body content (Vite, React, Vue, Next.js)
+    await page.waitForFunction(() => {
+      const b = document.body;
+      if (!b) return false;
+      const t = b.innerText ? b.innerText.trim() : '';
+      const root = document.getElementById('root') || document.getElementById('app') || document.querySelector('main');
+      return t.length > 0 || (root && root.childElementCount > 0);
+    }, { timeout: 6000 }).catch(() => {});
+
+    // 5. Short stabilization pause for CSS animations/transitions to settle
+    await new Promise(r => setTimeout(r, 400));
+
     const title = await page.title();
     const rawHtml = await page.content();
 
-    // Take screenshot
+    // Check for Outage, CAPTCHA, or Bot Protection challenge BEFORE taking screenshot
+    const incidentCheck = inspectForOutageOrCaptcha(responseStatus, rawHtml, title);
+
+    // 6. Capture genuine screenshot buffer
+    const screenshotBuffer = await page.screenshot({
+      fullPage: false // standard 1280x800 viewport
+    });
+
+    // 7. Validate captured screenshot buffer before disk save and Supabase upload
+    let nonUniformPixels = 0;
+    let nonUniformRatio = 0;
+    try {
+      const png = PNG.sync.read(screenshotBuffer);
+      const totalPixels = png.width * png.height;
+      const r0 = png.data[0];
+      const g0 = png.data[1];
+      const b0 = png.data[2];
+      for (let i = 0; i < png.data.length; i += 4) {
+        if (Math.abs(png.data[i] - r0) > 10 || Math.abs(png.data[i+1] - g0) > 10 || Math.abs(png.data[i+2] - b0) > 10) {
+          nonUniformPixels++;
+        }
+      }
+      nonUniformRatio = (nonUniformPixels / totalPixels) * 100;
+    } catch (pngErr) {
+      console.warn('[CRAWLER] PNG validation warning:', pngErr.message);
+    }
+
     const screenshotFilename = `snap-${Date.now()}-${uuidv4().slice(0, 6)}.png`;
     const screenshotFullPath = path.join(SCREENSHOTS_DIR, screenshotFilename);
-    await page.screenshot({
-      path: screenshotFullPath,
-      fullPage: false // standard viewport screenshot
-    });
+    fs.writeFileSync(screenshotFullPath, screenshotBuffer);
+
+    console.log(`[CRAWLER] Captured real screenshot for ${url}: ${screenshotFilename} (${screenshotBuffer.length} bytes, ${nonUniformRatio.toFixed(1)}% content pixels)`);
 
     const screenshotUrl = `/api/screenshots/${screenshotFilename}`;
     let screenshotStoragePath = '';
 
+    // 8. Upload genuine screenshot bytes to Supabase Storage bucket
     const monitorId = options.monitorId || 'general';
     const remotePath = `monitors/${monitorId}/${screenshotFilename}`;
     try {
-      const uploadRes = await uploadScreenshot(screenshotFullPath, remotePath);
+      const uploadRes = await uploadScreenshot(screenshotBuffer, remotePath);
       if (uploadRes?.success) {
         screenshotStoragePath = uploadRes.storagePath;
       }
     } catch (uploadErr) {
-      console.warn('[CRAWLER] Supabase screenshot upload non-fatal warning:', uploadErr.message);
+      console.warn('[CRAWLER] Supabase screenshot upload warning:', uploadErr.message);
     }
-
-    // Check for Outage or CAPTCHA
-    const incidentCheck = inspectForOutageOrCaptcha(responseStatus, rawHtml, title);
 
     await browser.close();
     browser = null;
@@ -297,7 +361,7 @@ async function crawlWithBrowser(url, options = {}) {
 }
 
 /**
- * Fast HTTP fetch fallback if browser is not required
+ * Fast HTTP fetch fallback if browser is not required or unavailable
  */
 async function crawlWithHttp(url, options = {}) {
   try {
@@ -316,32 +380,16 @@ async function crawlWithHttp(url, options = {}) {
 
     const incidentCheck = inspectForOutageOrCaptcha(res.status, rawHtml, title);
 
-    // Create a persistent PNG screenshot file for environments without headless browser
-    const synthetic = createSyntheticScreenshot(title, res.status, targetUrl);
-    let screenshotStoragePath = '';
-
-    if (synthetic.screenshotFullPath && fs.existsSync(synthetic.screenshotFullPath)) {
-      const monitorId = options.monitorId || 'general';
-      const filename = path.basename(synthetic.screenshotFullPath);
-      const remotePath = `monitors/${monitorId}/${filename}`;
-      try {
-        const uploadRes = await uploadScreenshot(synthetic.screenshotFullPath, remotePath);
-        if (uploadRes?.success) {
-          screenshotStoragePath = uploadRes.storagePath;
-        }
-      } catch (uploadErr) {
-        console.warn('[CRAWLER] Supabase synthetic upload non-fatal warning:', uploadErr.message);
-      }
-    }
-
+    // When crawling via HTTP without a browser, we report empty screenshot paths truthfully
+    // rather than inventing synthetic blank card placeholders.
     return {
       success: !incidentCheck.isIncident,
       status: res.status,
       title,
       rawHtml,
-      screenshotUrl: synthetic.screenshotUrl,
-      screenshotFullPath: synthetic.screenshotFullPath,
-      screenshotStoragePath,
+      screenshotUrl: '',
+      screenshotFullPath: '',
+      screenshotStoragePath: '',
       incident: incidentCheck
     };
   } catch (err) {
