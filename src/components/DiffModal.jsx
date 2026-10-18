@@ -224,8 +224,23 @@ export default function DiffModal({ monitor, onClose }) {
                 <Sparkles size={16} />
               </div>
               <div>
-                <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--cyan-400)', fontWeight: 700 }}>
-                  AI Change Summary
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--cyan-400)', fontWeight: 700 }}>
+                    AI Change Summary
+                  </span>
+                  {diffData?.summarySource && (
+                    <span style={{ 
+                      fontSize: '9px', 
+                      padding: '1px 6px', 
+                      borderRadius: '4px', 
+                      background: diffData.summarySource === 'gemini' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(148, 163, 184, 0.15)',
+                      color: diffData.summarySource === 'gemini' ? '#38bdf8' : '#94a3b8',
+                      fontWeight: 600,
+                      letterSpacing: '0.04em'
+                    }}>
+                      {diffData.summarySource === 'gemini' ? 'GEMINI' : 'RULE-BASED'}
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: '14px', fontWeight: 600, color: '#f8fafc' }}>
                   {diffData?.summary || 'Comparing baseline snapshots...'}

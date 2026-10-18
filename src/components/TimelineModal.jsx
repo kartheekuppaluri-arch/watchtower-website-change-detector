@@ -118,8 +118,20 @@ export default function TimelineModal({ monitor, onClose, onOpenDiff }) {
                     </div>
 
                     <div>
-                      <div style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-main)' }}>
-                        {s.summary || 'Snapshot captured'}
+                      <div style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>{s.summary || 'Snapshot captured'}</span>
+                        {s.summarySource === 'gemini' && (
+                          <span style={{
+                            fontSize: '9px',
+                            padding: '1px 5px',
+                            borderRadius: '4px',
+                            background: 'rgba(56, 189, 248, 0.2)',
+                            color: '#38bdf8',
+                            fontWeight: 700
+                          }}>
+                            GEMINI
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: '11.5px', color: 'var(--text-dim)', display: 'flex', gap: '8px', marginTop: '2px', alignItems: 'center', flexWrap: 'wrap' }}>
                         <span>{new Date(s.timestamp).toLocaleString()}</span>

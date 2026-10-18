@@ -217,6 +217,7 @@ class Database {
       screenshotStoragePath: snapshot.screenshotStoragePath || '',
       diffStats: snapshot.diffStats || { addedLines: 0, removedLines: 0, changedPercent: 0 },
       summary: snapshot.summary || 'Initial snapshot recorded',
+      summarySource: snapshot.summarySource || 'fallback',
       numberValue: snapshot.numberValue !== undefined ? snapshot.numberValue : null
     };
     db.snapshots.push(newSnapshot);

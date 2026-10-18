@@ -1,7 +1,7 @@
 const db = require('../db');
 const { crawlWithBrowser } = require('./crawler');
 const { extractAndFilterHtml, cleanTextNoise, computeContentHash, isChangeSignificant, extractNumericMetrics } = require('./noiseFilter');
-const { computeTextDiff, generateChangeSummary, checkKeywordAlerts } = require('./differ');
+const { computeTextDiff, generateChangeSummary, generateAiChangeSummary, checkKeywordAlerts } = require('./differ');
 const { dispatchAlerts } = require('./alerts');
 
 /**
@@ -259,6 +259,7 @@ class Scheduler {
         screenshotStoragePath: crawlResult.screenshotStoragePath || '',
         diffStats,
         summary: 'Initial baseline captured',
+        summarySource: 'fallback',
         numberValue: numericMetric
       });
 
@@ -287,7 +288,24 @@ class Scheduler {
         changeDetected = true;
         const diffResult = computeTextDiff(latestSnapshot.filteredText, cleanedText);
         diffStats = diffResult.stats;
-        summary = generateChangeSummary(latestSnapshot.filteredText, cleanedText, diffStats);
+        const fallbackSummary = generateChangeSummary(latestSnapshot.filteredText, cleanedText, diffStats);
+
+        let summary = fallbackSummary;
+        let summarySource = 'fallback';
+
+        try {
+          const aiResult = await generateAiChangeSummary({
+            oldText: latestSnapshot.filteredText,
+            newText: cleanedText,
+            diffStats,
+            monitor,
+            fallbackSummary
+          });
+          summary = aiResult.summary || fallbackSummary;
+          summarySource = aiResult.summarySource || 'fallback';
+        } catch (aiErr) {
+          console.warn('[SCHEDULER] AI change summarization notice:', aiErr.message);
+        }
 
         // Check for keyword alerts bonus
         const keywordAlerts = checkKeywordAlerts(latestSnapshot.filteredText, cleanedText, monitor.keywordAlerts);
@@ -308,6 +326,7 @@ class Scheduler {
           screenshotStoragePath: crawlResult.screenshotStoragePath || '',
           diffStats,
           summary,
+          summarySource,
           numberValue: numericMetric
         });
 

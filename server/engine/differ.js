@@ -246,9 +246,12 @@ function checkKeywordAlerts(oldText = '', newText = '', keywords = []) {
   return triggered;
 }
 
+const { generateAiChangeSummary } = require('./gemini');
+
 module.exports = {
   computeTextDiff,
   computeVisualScreenshotDiff,
   generateChangeSummary,
+  generateAiChangeSummary,
   checkKeywordAlerts
 };

@@ -234,6 +234,31 @@ async function runPipelineTests() {
     failed++;
   }
 
+  // =========================================================================
+  // TEST H: Visual Picker /api/picker/inspect Endpoint
+  // =========================================================================
+  try {
+    console.log('\n--- Test H: Visual Region Picker /api/picker/inspect ---');
+    const inspectRes = await fetch(`${process.env.BACKEND_URL}/api/picker/inspect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: `http://localhost:${port}/mock/store` })
+    });
+
+    assert.strictEqual(inspectRes.status, 200, 'Picker inspection endpoint must return HTTP 200');
+    const inspectData = await inspectRes.json();
+    assert.strictEqual(inspectData.success, true, 'Inspection must succeed');
+    assert.ok(inspectData.html, 'Must return HTML for interactive DOM picking');
+    assert.ok(inspectData.html.includes('product-details'), 'HTML must contain target selectors');
+    assert.ok(inspectData.screenshotUrl, 'Must return screenshot URL for visual preview');
+
+    console.log(`  ✓ Visual picker successfully retrieved live DOM and screenshot URL`);
+    passed++;
+  } catch (err) {
+    console.error('  ❌ Test H failed:', err.message);
+    failed++;
+  }
+
   console.log(`\n====================================================`);
   console.log(`🏁 Pipeline Suite Result: ${passed} PASSED, ${failed} FAILED`);
   console.log(`====================================================\n`);

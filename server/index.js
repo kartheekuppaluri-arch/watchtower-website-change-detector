@@ -5,8 +5,8 @@ const fs = require('fs');
 
 const db = require('./db');
 const scheduler = require('./engine/scheduler');
-const { crawlWithBrowser } = require('./engine/crawler');
-const { computeTextDiff, computeVisualScreenshotDiff, generateChangeSummary } = require('./engine/differ');
+const { crawlWithBrowser, crawlWithHttp } = require('./engine/crawler');
+const { computeTextDiff, computeVisualScreenshotDiff, generateChangeSummary, generateAiChangeSummary } = require('./engine/differ');
 const { sendWebhookAlert, sendEmailAlert, generateDailyDigest } = require('./engine/alerts');
 const { getSignedUrl } = require('./engine/storage');
 const { setupMockRoutes } = require('./mockServer');
@@ -322,15 +322,34 @@ apiRouter.post('/diff/compare', async (req, res) => {
     );
   }
 
-  // 3. AI / NLP One-Line Summary
-  const summary = generateChangeSummary(snapA.filteredText, snapB.filteredText, textDiffResult.stats);
+  // 3. AI / NLP One-Line Summary (Gemini with rule-based fallback)
+  const fallbackSummary = generateChangeSummary(snapA.filteredText, snapB.filteredText, textDiffResult.stats);
+  let summary = fallbackSummary;
+  let summarySource = 'fallback';
+
+  if (snapB.summary && snapB.summarySource && snapA.id !== snapB.id) {
+    summary = snapB.summary;
+    summarySource = snapB.summarySource;
+  } else if (snapA.filteredText !== snapB.filteredText) {
+    try {
+      const aiResult = await generateAiChangeSummary({
+        oldText: snapA.filteredText,
+        newText: snapB.filteredText,
+        diffStats: textDiffResult.stats,
+        fallbackSummary
+      });
+      summary = aiResult.summary || fallbackSummary;
+      summarySource = aiResult.summarySource || 'fallback';
+    } catch (_) {}
+  }
 
   res.json({
     snapA: enrichedSnapA,
     snapB: enrichedSnapB,
     textDiff: textDiffResult,
     visualDiff: visualDiffResult,
-    summary
+    summary,
+    summarySource
   });
 });
 
@@ -361,16 +380,54 @@ apiRouter.post('/picker/inspect', async (req, res) => {
   if (!url) return res.status(400).json({ error: 'URL is required' });
 
   try {
-    const result = await crawlWithBrowser(url, { timeoutMs: isVercel ? 8000 : 15000 });
+    let result = await crawlWithBrowser(url, { 
+      timeoutMs: isVercel ? 8000 : 15000,
+      allowHttpFallback: true 
+    });
+
+    if (!result?.success || !result?.rawHtml) {
+      console.log(`[PICKER] Browser crawl incomplete, attempting HTTP fetch fallback for ${url}...`);
+      const httpResult = await crawlWithHttp(url);
+      if (httpResult?.rawHtml) {
+        result = { 
+          ...httpResult, 
+          screenshotUrl: result?.screenshotUrl || '',
+          screenshotStoragePath: result?.screenshotStoragePath || ''
+        };
+      }
+    }
+
+    let signedUrl = null;
+    if (result?.screenshotStoragePath) {
+      try {
+        const signed = await getSignedUrl(result.screenshotStoragePath, 3600);
+        if (signed?.success && signed?.signedUrl) signedUrl = signed.signedUrl;
+      } catch (_) {}
+    }
+
     res.json({
-      success: result.success,
-      status: result.status,
-      title: result.title,
-      html: result.rawHtml,
-      screenshotUrl: result.screenshotUrl
+      success: Boolean(result?.rawHtml),
+      status: result?.status || 200,
+      title: result?.title || '',
+      html: result?.rawHtml || '',
+      screenshotUrl: signedUrl || result?.screenshotUrl || '',
+      error: result?.incident?.message || null
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[PICKER ERROR]', err.message);
+    try {
+      const httpResult = await crawlWithHttp(url);
+      return res.json({
+        success: Boolean(httpResult?.rawHtml),
+        status: httpResult?.status || 200,
+        title: httpResult?.title || '',
+        html: httpResult?.rawHtml || '',
+        screenshotUrl: '',
+        fallback: true
+      });
+    } catch (fallbackErr) {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
