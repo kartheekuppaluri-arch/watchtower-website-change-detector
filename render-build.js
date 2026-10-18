@@ -10,7 +10,31 @@ async function main() {
   console.log('🚀 [RENDER-BUILD] Starting WatchTower Build on Render');
   console.log('====================================================');
 
-  // 1. Ensure project workspace cache directory exists
+  // 1. Ensure all project dependencies are fully installed
+  console.log('📦 [RENDER-BUILD] Verifying and installing project dependencies...');
+  try {
+    execSync('npm install --include=prod', { stdio: 'inherit' });
+    console.log('✅ [RENDER-BUILD] Project dependencies installed.');
+  } catch (err) {
+    console.warn(`⚠️ [RENDER-BUILD] Dependency install notice: ${err.message}`);
+  }
+
+  // 1b. Verify critical runtime modules
+  try {
+    require('@google/genai');
+    console.log('✅ [RENDER-BUILD] Verified @google/genai is resolvable.');
+  } catch (modErr) {
+    console.warn(`⚠️ [RENDER-BUILD] @google/genai not resolved initially (${modErr.message}), installing explicitly...`);
+    try {
+      execSync('npm install --no-audit --no-fund @google/genai@^2.30.0', { stdio: 'inherit' });
+      require('@google/genai');
+      console.log('✅ [RENDER-BUILD] @google/genai explicitly installed and verified.');
+    } catch (installErr) {
+      console.error('❌ [RENDER-BUILD] Failed to install @google/genai:', installErr.message);
+    }
+  }
+
+  // 2. Ensure project workspace cache directory exists
   if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir, { recursive: true });
   }
