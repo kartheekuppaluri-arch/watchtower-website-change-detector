@@ -80,11 +80,12 @@ class FetchDeduplicator {
 
 class Scheduler {
   constructor() {
-    this.rateLimiter = new DomainRateLimiter(process.env.VERCEL ? 0 : 1500);
+    this.rateLimiter = new DomainRateLimiter(process.env.VERCEL ? 0 : 1000);
     this.deduplicator = new FetchDeduplicator();
+    this.activeMonitorChecks = new Map(); // monitorId -> Promise<CheckResult>
     this.isProcessingQueue = false;
     this.timer = null;
-    this.maxRetries = process.env.VERCEL ? 1 : 2;
+    this.maxRetries = 1;
   }
 
   start() {
@@ -126,17 +127,37 @@ class Scheduler {
 
   /**
    * Run a single check for a monitor with retry logic, noise filtering, diffing, and alerts
+   * Deduplicates concurrent check calls for the exact same monitor
    */
   async runCheck(monitorId) {
     const monitor = db.getMonitor(monitorId);
     if (!monitor) return { error: 'Monitor not found' };
 
+    if (this.activeMonitorChecks.has(monitorId)) {
+      console.log(`[SCHEDULER] Check already in flight for "${monitor.name}". Reusing active check.`);
+      return await this.activeMonitorChecks.get(monitorId);
+    }
+
+    const checkPromise = (async () => {
+      try {
+        return await this._executeCheck(monitor);
+      } finally {
+        this.activeMonitorChecks.delete(monitorId);
+      }
+    })();
+
+    this.activeMonitorChecks.set(monitorId, checkPromise);
+    return await checkPromise;
+  }
+
+  async _executeCheck(monitor) {
+    const monitorId = monitor.id;
     console.log(`[CRAWL] Starting check for "${monitor.name}" (${monitor.url})`);
 
     let crawlResult = null;
     let attempt = 0;
     let lastErr = null;
-    const timeoutMs = process.env.VERCEL ? 8000 : 25000;
+    const timeoutMs = process.env.VERCEL ? 8000 : 20000;
 
     // Retry loop with exponential backoff
     while (attempt <= this.maxRetries) {

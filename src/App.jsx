@@ -109,6 +109,8 @@ export default function App() {
       return data;
     } catch (e) {
       console.error('Check failed:', e);
+      await loadMonitors().catch(() => {});
+      throw e;
     }
   };
 

@@ -184,6 +184,56 @@ async function runPipelineTests() {
     failed++;
   }
 
+  // =========================================================================
+  // TEST F: In-Flight Check Deduplication & Concurrency Protection
+  // =========================================================================
+  try {
+    console.log('\n--- Test F: In-Flight Check Deduplication ---');
+    const scheduler = require('./engine/scheduler');
+
+    // Launch two simultaneous checks for the exact same monitor
+    const [res1, res2] = await Promise.all([
+      scheduler.runCheck('monitor-store-demo'),
+      scheduler.runCheck('monitor-store-demo')
+    ]);
+
+    assert.ok(res1, 'Result 1 must exist');
+    assert.ok(res2, 'Result 2 must exist');
+    assert.strictEqual(scheduler.activeMonitorChecks.has('monitor-store-demo'), false, 'Active check map must be cleaned up in finally block');
+
+    console.log('  ✓ Simultaneous checks safely deduplicated and resolved without resource collisions');
+    passed++;
+  } catch (err) {
+    console.error('  ❌ Test F failed:', err.message);
+    failed++;
+  }
+
+  // =========================================================================
+  // TEST G: Crawler Failure Handling & Resource Cleanup
+  // =========================================================================
+  try {
+    console.log('\n--- Test G: Crawler Failure Handling & Cleanup ---');
+    const { browserLimiter } = require('./engine/crawler');
+
+    // Crawl a guaranteed unreachable local port with a fast timeout
+    const failRes = await crawlWithBrowser('http://127.0.0.1:59999/unreachable-test', {
+      timeoutMs: 3000,
+      monitorId: 'test-fail-cleanup'
+    });
+
+    assert.strictEqual(failRes.success, false, 'Failed crawl must report success=false');
+    assert.ok(failRes.incident, 'Failed crawl must return incident metadata');
+    assert.strictEqual(failRes.incident.isIncident, true, 'isIncident must be true');
+    assert.strictEqual(browserLimiter.running, 0, 'Browser concurrency limiter must be fully released (running = 0)');
+    assert.strictEqual(browserLimiter.queue.length, 0, 'Limiter queue must be empty');
+
+    console.log('  ✓ Unreachable URL returned structured incident and released browser concurrency lock');
+    passed++;
+  } catch (err) {
+    console.error('  ❌ Test G failed:', err.message);
+    failed++;
+  }
+
   console.log(`\n====================================================`);
   console.log(`🏁 Pipeline Suite Result: ${passed} PASSED, ${failed} FAILED`);
   console.log(`====================================================\n`);

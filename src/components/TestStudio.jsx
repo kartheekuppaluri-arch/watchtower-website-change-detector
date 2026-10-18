@@ -20,6 +20,19 @@ export default function TestStudio({ monitors, onCheckNow }) {
   const storeMonitor = monitors.find(m => m.url.includes('/mock/store'));
   const newsMonitor = monitors.find(m => m.url.includes('/mock/news'));
   const statusMonitor = monitors.find(m => m.url.includes('/mock/status'));
+  const [checkingMonitorId, setCheckingMonitorId] = useState(null);
+
+  const handleRunCheck = async (id) => {
+    if (!id || checkingMonitorId) return;
+    setCheckingMonitorId(id);
+    try {
+      await onCheckNow(id);
+    } catch (err) {
+      console.warn('TestStudio check completed with note:', err.message);
+    } finally {
+      setCheckingMonitorId(null);
+    }
+  };
 
   const triggerMockApi = async (key, endpoint) => {
     setLoadingAction(key);

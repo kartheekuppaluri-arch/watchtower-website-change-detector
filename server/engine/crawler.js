@@ -232,6 +232,34 @@ function inspectForOutageOrCaptcha(status, html, pageTitle = '') {
   return { isIncident: false };
 }
 
+// Global concurrency limiter for browser crawls to prevent CPU/RAM exhaustion on Render
+class BrowserConcurrencyLimiter {
+  constructor(maxConcurrent = 1) {
+    this.maxConcurrent = maxConcurrent;
+    this.running = 0;
+    this.queue = [];
+  }
+
+  async acquire() {
+    if (this.running < this.maxConcurrent) {
+      this.running++;
+      return;
+    }
+    await new Promise(resolve => this.queue.push(resolve));
+    this.running++;
+  }
+
+  release() {
+    this.running = Math.max(0, this.running - 1);
+    if (this.queue.length > 0) {
+      const next = this.queue.shift();
+      next();
+    }
+  }
+}
+
+const browserLimiter = new BrowserConcurrencyLimiter(1);
+
 /**
  * Crawl a page using headless browser (Puppeteer) with full SPA hydration and validated screenshot capture
  */
@@ -297,27 +325,45 @@ async function crawlWithBrowser(url, options = {}) {
 
   const timeoutMs = options.timeoutMs || 25000;
   let browser = null;
+  let page = null;
+
+  await browserLimiter.acquire();
 
   try {
+    const launchArgs = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-gpu',
+      '--disable-dev-shm-usage',
+      '--window-size=1280,800',
+      '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-extensions',
+      '--disable-background-networking',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-breakpad',
+      '--disable-component-update',
+      '--disable-domain-reliability',
+      '--disable-sync',
+      '--mute-audio',
+      ...(process.platform !== 'win32' ? ['--single-process'] : [])
+    ];
+
     browser = await puppeteer.launch({
       executablePath: execPath,
       headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-gpu',
-        '--disable-dev-shm-usage',
-        '--window-size=1280,800'
-      ]
+      protocolTimeout: 60000,
+      defaultViewport: { width: 1280, height: 800, deviceScaleFactor: 1 },
+      args: launchArgs
     });
 
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36');
+    page = await browser.newPage();
     await page.setExtraHTTPHeaders({
       'Accept-Language': 'en-US,en;q=0.9',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
-    });
+    }).catch(() => {});
 
     let responseStatus = 200;
     page.on('response', response => {
@@ -326,43 +372,46 @@ async function crawlWithBrowser(url, options = {}) {
       }
     });
 
-    // 1. Navigate to page with dual event wait
+    // 1. Navigate to page with bounded timeout (max 15s)
+    const navTimeout = Math.min(timeoutMs, 15000);
     const response = await page.goto(url, {
-      waitUntil: ['domcontentloaded', 'networkidle2'],
-      timeout: timeoutMs
+      waitUntil: 'domcontentloaded',
+      timeout: navTimeout
     });
-
     if (response) {
       responseStatus = response.status();
     }
 
-    // 2. Wait for document and fonts to fully complete
-    await page.evaluate(() => {
-      return Promise.all([
-        document.readyState === 'complete' ? Promise.resolve() : new Promise(r => window.addEventListener('load', r, { once: true })),
-        document.fonts ? document.fonts.ready : Promise.resolve()
-      ]);
-    }).catch(() => {});
+    // 2. Allow document readiness and fonts to settle (max 2.5s)
+    await Promise.race([
+      page.evaluate(() => {
+        return Promise.all([
+          document.readyState === 'complete' ? Promise.resolve() : new Promise(r => window.addEventListener('load', r, { once: true })),
+          document.fonts ? document.fonts.ready : Promise.resolve()
+        ]);
+      }),
+      new Promise(r => setTimeout(r, 2500))
+    ]).catch(() => {});
 
-    // 3. If watchSelector is specified, wait for it to be rendered and visible in DOM
+    // 3. If watchSelector is specified, wait for it to be rendered and visible in DOM (max 3s)
     if (options.watchSelector && options.watchSelector.trim()) {
       await page.waitForSelector(options.watchSelector.trim(), {
         visible: true,
-        timeout: 6000
+        timeout: 3000
       }).catch(() => {});
     }
 
-    // 4. Wait for SPA hydration / non-empty body content (Vite, React, Vue, Next.js)
+    // 4. Wait for SPA hydration / non-empty body content (max 3s)
     await page.waitForFunction(() => {
       const b = document.body;
       if (!b) return false;
       const t = b.innerText ? b.innerText.trim() : '';
       const root = document.getElementById('root') || document.getElementById('app') || document.querySelector('main');
       return t.length > 0 || (root && root.childElementCount > 0);
-    }, { timeout: 6000 }).catch(() => {});
+    }, { timeout: 3000 }).catch(() => {});
 
     // 5. Short stabilization pause for CSS animations/transitions to settle
-    await new Promise(r => setTimeout(r, 400));
+    await new Promise(r => setTimeout(r, 200));
 
     const title = await page.title();
     const rawHtml = await page.content();
@@ -370,10 +419,11 @@ async function crawlWithBrowser(url, options = {}) {
     // Check for Outage, CAPTCHA, or Bot Protection challenge BEFORE taking screenshot
     const incidentCheck = inspectForOutageOrCaptcha(responseStatus, rawHtml, title);
 
-    // 6. Capture genuine screenshot buffer
-    const screenshotBuffer = await page.screenshot({
-      fullPage: false // standard 1280x800 viewport
-    });
+    // 6. Capture genuine screenshot buffer with timeout guard (10s)
+    const screenshotBuffer = await Promise.race([
+      page.screenshot({ fullPage: false }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Screenshot capture timed out after 10s')), 10000))
+    ]);
 
     // 7. Validate captured screenshot buffer before disk save and Supabase upload
     let nonUniformPixels = 0;
@@ -403,11 +453,14 @@ async function crawlWithBrowser(url, options = {}) {
     const screenshotUrl = `/api/screenshots/${screenshotFilename}`;
     let screenshotStoragePath = '';
 
-    // 8. Upload genuine screenshot bytes to Supabase Storage bucket
+    // 8. Upload genuine screenshot bytes to Supabase Storage bucket with 12s timeout guard
     const remotePath = `monitors/${monitorId}/${screenshotFilename}`;
     try {
       console.log(`[CRAWLER] Uploading screenshot to Supabase Storage: ${remotePath}...`);
-      const uploadRes = await uploadScreenshot(screenshotBuffer, remotePath);
+      const uploadRes = await Promise.race([
+        uploadScreenshot(screenshotBuffer, remotePath),
+        new Promise(resolve => setTimeout(() => resolve({ success: false, error: 'Upload timed out after 12s' }), 12000))
+      ]);
       if (uploadRes?.success) {
         screenshotStoragePath = uploadRes.storagePath;
         console.log(`[CRAWLER] Supabase Storage upload succeeded: ${screenshotStoragePath}`);
@@ -440,11 +493,18 @@ async function crawlWithBrowser(url, options = {}) {
       screenshotStoragePath: '',
       incident: {
         isIncident: true,
-        type: err.name === 'TimeoutError' ? 'TIMEOUT' : 'OUTAGE',
+        type: err.name === 'TimeoutError' || err.message.includes('timed out') ? 'TIMEOUT' : 'OUTAGE',
         message: `Crawl failed: ${err.message}`
       }
     };
   } finally {
+    if (page) {
+      try {
+        await page.close();
+      } catch (pageCloseErr) {
+        console.warn('[CRAWLER] Error closing page:', pageCloseErr.message);
+      }
+    }
     if (browser) {
       try {
         await browser.close();
@@ -452,6 +512,7 @@ async function crawlWithBrowser(url, options = {}) {
         console.warn('[CRAWLER] Error closing browser:', closeErr.message);
       }
     }
+    browserLimiter.release();
   }
 }
 
@@ -509,5 +570,6 @@ module.exports = {
   crawlWithBrowser,
   crawlWithHttp,
   inspectForOutageOrCaptcha,
-  getBrowserExecutablePath
+  getBrowserExecutablePath,
+  browserLimiter
 };

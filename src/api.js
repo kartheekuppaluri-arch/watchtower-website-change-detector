@@ -35,7 +35,11 @@ export function apiUrl(path = '') {
  * @param {RequestInit} [options] - Standard fetch options
  * @returns {Promise<Response>}
  */
-export function apiFetch(endpoint, options) {
+export function apiFetch(endpoint, options = {}) {
+  // Default to a 45-second AbortSignal timeout to prevent requests from hanging indefinitely
+  if (!options.signal && typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    options = { ...options, signal: AbortSignal.timeout(45000) };
+  }
   return fetch(apiUrl(endpoint), options);
 }
 

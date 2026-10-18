@@ -36,6 +36,8 @@ export default function MonitorCard({
     setIsChecking(true);
     try {
       await onCheckNow(monitor.id);
+    } catch (err) {
+      console.warn(`[MONITOR] Check for "${monitor.name}" completed with note:`, err.message);
     } finally {
       setIsChecking(false);
     }
