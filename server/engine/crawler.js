@@ -22,32 +22,48 @@ const SCREENSHOTS_DIR = path.join(DATA_DIR, 'screenshots');
 
 function resolveUrl(url) {
   if (!url) return '';
+  const port = process.env.PORT || 3001;
+  const localOrigin = `http://localhost:${port}`;
+
   // Support relative mock URLs or localhost URLs in deployed environments
   if (url.startsWith('/')) {
     const origin = process.env.VERCEL_URL 
       ? `https://${process.env.VERCEL_URL}` 
-      : (process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`);
+      : (process.env.BACKEND_URL || localOrigin);
     return `${origin}${url}`;
   }
-  if (process.env.VERCEL_URL && url.includes('localhost:3001')) {
-    return url.replace('http://localhost:3001', `https://${process.env.VERCEL_URL}`);
+
+  if (process.env.VERCEL_URL && (url.includes('localhost:3001') || url.includes(`localhost:${port}`))) {
+    return url.replace(/http:\/\/localhost:(?:3001|\d+)/, `https://${process.env.VERCEL_URL}`);
   }
+
+  // If running on non-3001 port (e.g. Render PORT=10000), rewrite localhost:3001 to active port
+  if (url.includes('localhost:3001') && String(port) !== '3001') {
+    return url.replace('http://localhost:3001', localOrigin);
+  }
+
   return url;
 }
 
-function findExecutableInDir(dir, depth = 0) {
-  if (depth > 5) return null;
+function findExecutableInDir(dir, depth = 0, maxDepth = 8) {
+  if (!dir || depth > maxDepth) return null;
   try {
+    if (!fs.existsSync(dir)) return null;
     const files = fs.readdirSync(dir);
     for (const file of files) {
       const full = path.join(dir, file);
       const stat = fs.statSync(full);
       if (stat.isDirectory()) {
-        const res = findExecutableInDir(full, depth + 1);
+        const res = findExecutableInDir(full, depth + 1, maxDepth);
         if (res) return res;
       } else {
         const isExe = file === 'chrome' || file === 'chrome.exe' || file === 'chromium' || file === 'chromium.exe';
-        if (isExe) return full;
+        if (isExe) {
+          if (process.platform !== 'win32') {
+            try { fs.chmodSync(full, 0o755); } catch (_) {}
+          }
+          return full;
+        }
       }
     }
   } catch (_) {}
@@ -56,14 +72,33 @@ function findExecutableInDir(dir, depth = 0) {
 
 // Auto-detect browser executable across Render/Linux, Windows, and macOS
 async function getBrowserExecutablePath() {
-  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
-    return process.env.PUPPETEER_EXECUTABLE_PATH;
-  }
-  if (process.env.CHROME_BIN && fs.existsSync(process.env.CHROME_BIN)) {
-    return process.env.CHROME_BIN;
+  // 1. Explicit environment variable: PUPPETEER_EXECUTABLE_PATH
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    const customPath = process.env.PUPPETEER_EXECUTABLE_PATH.trim();
+    if (fs.existsSync(customPath)) {
+      if (process.platform !== 'win32') {
+        try { fs.chmodSync(customPath, 0o755); } catch (_) {}
+      }
+      console.log(`[CRAWLER] Using PUPPETEER_EXECUTABLE_PATH: ${customPath}`);
+      return customPath;
+    }
+    console.warn(`[CRAWLER] Configured PUPPETEER_EXECUTABLE_PATH does not exist: ${customPath}`);
   }
 
-  // On Windows: Check installed Chrome/Edge in Program Files first (guaranteed complete V8 snapshot & DLLs)
+  // 2. Explicit environment variable: CHROME_BIN
+  if (process.env.CHROME_BIN) {
+    const customBin = process.env.CHROME_BIN.trim();
+    if (fs.existsSync(customBin)) {
+      if (process.platform !== 'win32') {
+        try { fs.chmodSync(customBin, 0o755); } catch (_) {}
+      }
+      console.log(`[CRAWLER] Using CHROME_BIN: ${customBin}`);
+      return customBin;
+    }
+    console.warn(`[CRAWLER] Configured CHROME_BIN does not exist: ${customBin}`);
+  }
+
+  // 3. On Windows: Check installed Chrome/Edge in Program Files first (guaranteed complete V8 snapshot & DLLs)
   if (process.platform === 'win32') {
     const winCandidates = [
       'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -78,43 +113,52 @@ async function getBrowserExecutablePath() {
     }
   }
 
-  // 1. Check Puppeteer's own executablePath resolution
+  // 4. Check Puppeteer's own executablePath resolution (reads puppeteer.config.cjs in project workspace)
   if (puppeteer && typeof puppeteer.executablePath === 'function') {
     try {
       const pPath = await Promise.resolve(puppeteer.executablePath());
       if (pPath && fs.existsSync(pPath)) {
+        if (process.platform !== 'win32') {
+          try { fs.chmodSync(pPath, 0o755); } catch (_) {}
+        }
+        console.log(`[CRAWLER] Puppeteer resolved executablePath: ${pPath}`);
         return pPath;
       }
     } catch (_) {}
   }
 
-  // 2. Scan standard cache directories where Puppeteer installs Chromium (Render, Linux, Docker)
+  // 5. Scan standard cache directories where Puppeteer installs Chromium (Render, Linux, Docker, Workspace)
   const cacheRoots = [
+    path.join(process.cwd(), '.cache', 'puppeteer'),
+    path.join(__dirname, '..', '..', '.cache', 'puppeteer'),
     '/opt/render/project/src/.cache/puppeteer',
     '/opt/render/.cache/puppeteer',
     path.join(process.env.HOME || '', '.cache', 'puppeteer'),
-    path.join(process.cwd(), '.cache', 'puppeteer'),
     path.join(process.env.USERPROFILE || '', '.cache', 'puppeteer')
   ];
 
   for (const root of cacheRoots) {
     try {
       if (root && fs.existsSync(root)) {
-        const found = findExecutableInDir(root);
-        if (found) return found;
+        const found = findExecutableInDir(root, 0, 8);
+        if (found) {
+          if (process.platform !== 'win32') {
+            try { fs.chmodSync(found, 0o755); } catch (_) {}
+          }
+          console.log(`[CRAWLER] Discovered browser executable in cache root (${root}): ${found}`);
+          return found;
+        }
       }
     } catch (_) {}
   }
 
-  // 3. Scan system browser candidates on Linux / macOS
+  // 6. Scan system browser candidates on Linux / macOS
   const candidates = [
-    // Linux / Render / Docker / Debian paths
     '/usr/bin/google-chrome-stable',
     '/usr/bin/google-chrome',
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
     '/snap/bin/chromium',
-    // macOS paths
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
     '/Applications/Chromium.app/Contents/MacOS/Chromium'
   ];
@@ -122,6 +166,7 @@ async function getBrowserExecutablePath() {
   for (const candidate of candidates) {
     try {
       if (candidate && fs.existsSync(candidate)) {
+        console.log(`[CRAWLER] Using system browser binary: ${candidate}`);
         return candidate;
       }
     } catch (_) {}
@@ -192,11 +237,55 @@ function inspectForOutageOrCaptcha(status, html, pageTitle = '') {
  */
 async function crawlWithBrowser(url, options = {}) {
   url = resolveUrl(url);
-  const execPath = await getBrowserExecutablePath();
+  const monitorId = options.monitorId || 'general';
+
+  let execPath = await getBrowserExecutablePath();
   if (!execPath) {
-    console.log(`[CRAWLER] No headless browser binary detected in runtime; using Cheerio HTTP fetch for: ${url}`);
-    return await crawlWithHttp(url, options);
+    // If running in a Linux runtime (like Render) where build cache might have missed it,
+    // attempt runtime emergency installation into project workspace cache once
+    if (process.platform === 'linux' && !process.env.VERCEL) {
+      console.log(`[CRAWLER] Browser binary not found at runtime. Attempting emergency workspace install...`);
+      try {
+        const { execSync } = require('child_process');
+        const workspaceCache = path.join(process.cwd(), '.cache', 'puppeteer');
+        if (!fs.existsSync(workspaceCache)) {
+          fs.mkdirSync(workspaceCache, { recursive: true });
+        }
+        execSync('npx puppeteer browsers install chrome', {
+          stdio: 'inherit',
+          env: { ...process.env, PUPPETEER_CACHE_DIR: workspaceCache },
+          timeout: 60000
+        });
+        execPath = await getBrowserExecutablePath();
+      } catch (runtimeInstallErr) {
+        console.error(`[CRAWLER] Runtime browser install attempt failed: ${runtimeInstallErr.message}`);
+      }
+    }
   }
+
+  if (!execPath) {
+    console.error(`[CRAWLER ERROR] No headless browser binary detected at runtime for: ${url}`);
+    if (options.allowHttpFallback) {
+      console.log(`[CRAWLER] allowHttpFallback is active; continuing with Cheerio HTTP crawl for: ${url}`);
+      return await crawlWithHttp(url, options);
+    }
+    return {
+      success: false,
+      status: 0,
+      title: 'Browser Unavailable',
+      rawHtml: '',
+      screenshotUrl: '',
+      screenshotFullPath: '',
+      screenshotStoragePath: '',
+      incident: {
+        isIncident: true,
+        type: 'BROWSER_UNAVAILABLE',
+        message: 'No headless Chrome executable found in runtime. Build command must install Chrome into workspace .cache/puppeteer.'
+      }
+    };
+  }
+
+  console.log(`[CRAWLER] Launching headless Chrome (${execPath}) for: ${url} (monitor: ${monitorId})`);
 
   try {
     if (!fs.existsSync(SCREENSHOTS_DIR)) {
@@ -315,19 +404,19 @@ async function crawlWithBrowser(url, options = {}) {
     let screenshotStoragePath = '';
 
     // 8. Upload genuine screenshot bytes to Supabase Storage bucket
-    const monitorId = options.monitorId || 'general';
     const remotePath = `monitors/${monitorId}/${screenshotFilename}`;
     try {
+      console.log(`[CRAWLER] Uploading screenshot to Supabase Storage: ${remotePath}...`);
       const uploadRes = await uploadScreenshot(screenshotBuffer, remotePath);
       if (uploadRes?.success) {
         screenshotStoragePath = uploadRes.storagePath;
+        console.log(`[CRAWLER] Supabase Storage upload succeeded: ${screenshotStoragePath}`);
+      } else {
+        console.warn(`[CRAWLER] Supabase Storage upload note: ${uploadRes?.error || 'Storage upload did not complete'}`);
       }
     } catch (uploadErr) {
-      console.warn('[CRAWLER] Supabase screenshot upload warning:', uploadErr.message);
+      console.warn('[CRAWLER] Supabase screenshot upload exception:', uploadErr.message);
     }
-
-    await browser.close();
-    browser = null;
 
     return {
       success: !incidentCheck.isIncident,
@@ -340,9 +429,7 @@ async function crawlWithBrowser(url, options = {}) {
       incident: incidentCheck
     };
   } catch (err) {
-    if (browser) {
-      try { await browser.close(); } catch (_) {}
-    }
+    console.error(`[CRAWLER ERROR] Exception during browser crawl for ${url}:`, err.message);
     return {
       success: false,
       status: 0,
@@ -357,6 +444,14 @@ async function crawlWithBrowser(url, options = {}) {
         message: `Crawl failed: ${err.message}`
       }
     };
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeErr) {
+        console.warn('[CRAWLER] Error closing browser:', closeErr.message);
+      }
+    }
   }
 }
 

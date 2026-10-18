@@ -350,7 +350,7 @@ apiRouter.get('/screenshots/signed/:snapshotId', async (req, res) => {
   const host = req.get('host') || 'localhost:3001';
   const protocol = req.protocol || 'http';
   const localUrl = snapshot.screenshotUrl ? `${protocol}://${host}${snapshot.screenshotUrl}` : null;
-  res.json({ success: Boolean(localUrl), signedUrl: localUrl, fallback: true });
+  res.json({ success: Boolean(localUrl), signedUrl: localUrl, storagePath: snapshot.screenshotStoragePath || null, fallback: true });
 });
 
 // -------------------------------------------------------------
@@ -466,19 +466,17 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start scheduler only if not on Vercel
-if (!isVercel) {
+// Start server and scheduler only if run directly and not on Vercel
+if (!isVercel && require.main === module) {
   scheduler.start();
-  if (require.main === module || process.env.NODE_ENV !== 'production') {
-    app.listen(PORT, () => {
-      console.log(`=======================================================`);
-      console.log(`🚀 Website Change Detector Backend running on port ${PORT}`);
-      console.log(`📡 Mock E-commerce Store: http://localhost:${PORT}/mock/store`);
-      console.log(`📡 Mock News Portal:     http://localhost:${PORT}/mock/news`);
-      console.log(`📡 Mock Outage/Status:   http://localhost:${PORT}/mock/status`);
-      console.log(`=======================================================`);
-    });
-  }
+  app.listen(PORT, () => {
+    console.log(`=======================================================`);
+    console.log(`🚀 Website Change Detector Backend running on port ${PORT}`);
+    console.log(`📡 Mock E-commerce Store: http://localhost:${PORT}/mock/store`);
+    console.log(`📡 Mock News Portal:     http://localhost:${PORT}/mock/news`);
+    console.log(`📡 Mock Outage/Status:   http://localhost:${PORT}/mock/status`);
+    console.log(`=======================================================`);
+  });
 }
 
 module.exports = app;

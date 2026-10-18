@@ -43,11 +43,13 @@ function getClient() {
  */
 async function uploadScreenshot(localFilePathOrBuffer, storagePath) {
   if (!isConfigured()) {
+    console.log('[STORAGE] Supabase Storage is not configured (SUPABASE_URL and SUPABASE_SECRET_KEY / SUPABASE_SERVICE_ROLE_KEY required). Local file kept.');
     return { success: false, storagePath: '', error: 'Supabase Storage is not configured' };
   }
 
   const client = getClient();
   if (!client) {
+    console.error('[STORAGE] Failed to initialize Supabase client instance.');
     return { success: false, storagePath: '', error: 'Failed to create Supabase client' };
   }
 
@@ -64,6 +66,7 @@ async function uploadScreenshot(localFilePathOrBuffer, storagePath) {
       return { success: false, storagePath: '', error: 'Invalid file or buffer parameter provided' };
     }
 
+    console.log(`[STORAGE] Uploading to bucket "${BUCKET_NAME}" at path "${storagePath}" (${fileBuffer.length} bytes)...`);
     const { data, error } = await client.storage
       .from(BUCKET_NAME)
       .upload(storagePath, fileBuffer, {
@@ -72,14 +75,14 @@ async function uploadScreenshot(localFilePathOrBuffer, storagePath) {
       });
 
     if (error) {
-      console.error(`[STORAGE] Supabase upload failed for ${storagePath}:`, error.message);
+      console.error(`[STORAGE] ❌ Supabase upload failed for ${storagePath}:`, error.message);
       return { success: false, storagePath: '', error: error.message };
     }
 
-    console.log(`[STORAGE] Uploaded screenshot to Supabase Storage: ${BUCKET_NAME}/${storagePath} (${fileBuffer.length} bytes)`);
+    console.log(`[STORAGE] ✅ Uploaded screenshot to Supabase Storage: ${BUCKET_NAME}/${storagePath} (${fileBuffer.length} bytes)`);
     return { success: true, storagePath };
   } catch (err) {
-    console.error(`[STORAGE] Exception during screenshot upload:`, err.message);
+    console.error(`[STORAGE] ❌ Exception during screenshot upload:`, err.message);
     return { success: false, storagePath: '', error: err.message };
   }
 }

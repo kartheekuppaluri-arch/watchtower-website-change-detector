@@ -241,6 +241,8 @@ class Scheduler {
         numberValue: numericMetric
       });
 
+      console.log(`[SCHEDULER] ✅ Saved baseline snapshot ${initialSnap.id} for "${monitor.name}" (Storage: ${initialSnap.screenshotStoragePath || 'none'}, URL: ${initialSnap.screenshotUrl || 'none'})`);
+
       db.updateMonitor(monitorId, {
         status: 'OK',
         lastChecked: nowIso,
@@ -287,6 +289,8 @@ class Scheduler {
           summary,
           numberValue: numericMetric
         });
+
+        console.log(`[SCHEDULER] ✅ Saved changed snapshot ${newSnapshot.id} for "${monitor.name}" (Storage: ${newSnapshot.screenshotStoragePath || 'none'}, URL: ${newSnapshot.screenshotUrl || 'none'})`);
 
         // Dispatch alerts (Requirement 7)
         await dispatchAlerts(monitor, newSnapshot, diffStats);
