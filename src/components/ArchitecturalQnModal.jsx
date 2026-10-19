@@ -70,8 +70,9 @@ export default function ArchitecturalQnModal({ onClose }) {
                 <span style={{ fontWeight: 600, color: 'var(--status-error)', fontSize: '12.5px' }}>WatchTower Implementation:</span>
                 <ul style={{ paddingLeft: '18px', marginTop: '6px', fontSize: '12.5px' }}>
                   <li>Our crawler runs <code>inspectForOutageOrCaptcha(status, html)</code> before processing DOM.</li>
-                  <li>HTTP 5xx and connection timeouts are classified as <code>OUTAGE</code> incidents.</li>
+                  <li>HTTP 5xx, connection resets, and timeouts are classified as <code>OUTAGE</code> incidents.</li>
                   <li>Challenge indicators (<code>cf-browser-verification</code>, Turnstile, 403 blocks) are classified as <code>CAPTCHA / BLOCKED</code>.</li>
+                  <li><strong>Incomplete Render Guard:</strong> Pages with &lt;15% baseline content are flagged as <code>INCOMPLETE_RENDER</code> to avoid false -90% deletion alerts.</li>
                   <li><strong>Zero dirty snapshots are stored</strong> and content change alerts are suppressed. The monitor enters an <code>ERROR</code> or <code>BLOCKED</code> state with an incident logged.</li>
                 </ul>
               </div>

@@ -32,47 +32,51 @@ WatchTower solves these challenges with a verified 8-stage runtime pipeline:
 [![WatchTower Runtime Pipeline Architecture](public/architecture-pipeline.jpg)](public/architecture-pipeline.jpg)
 
 The verified 8-stage verification pipeline executes in strict sequential order:
-1. **Target URL Config** — Monitor configuration, target URLs, crawl settings (`WatchSelector`, `ignoreSelectors`, cadence).
-2. **Domain Queue & Coalescing** — `DomainRateLimiter` (1 per hostname, 1500ms delay) & `FetchDeduplicator` (coalesces duplicate in-flight crawls).
-3. **Crawl Pipeline** — Puppeteer Headless Chromium (1280×800 viewport), screenshot capture, and Cheerio HTTP fallback.
-4. **Incident Classifier** — Inspects for HTTP 5xx outages and Cloudflare/Turnstile/CAPTCHA challenges; branches to **Log Incident Event** & **Suppress Snapshot (No False Alarm)** or continues to content scrubbing.
-5. **Noise Scrubbing Engine** — 3 deterministic layers: Layer A (DOM pruning), Layer B (regex date/token filter), and Layer C (whitespace collapse).
-6. **Differential Analysis** — SHA-256 fingerprinting, hash equality short-circuit (<1ms), Myers line/word diffing, sensitivity gating, and pixelmatch visual overlay masks.
-7. **Persistence & History Store** — Writes immutable snapshot record (`id`, `timestamp`, `hash`, `text`, `diffStats`, `screenshotUrl`).
-8. **Alert Dispatcher & Feed Distribution** — Discord & Telegram webhooks (hash-deduplicated), 24-hour daily change digests, and per-monitor RSS feeds (`/api/monitors/:id/rss`).
-
----
-
-## Key Features
-
-- **Autonomous Headless Browser Crawling:** Full Puppeteer Chromium rendering at 1280×800 viewport with network idle detection, paired with a lightweight Cheerio HTTP fetch fallback for serverless runtimes.
-- **Visual Selector Picker:** Point-and-click DOM selector inspector allowing users to isolate specific targets (`#pricing`, `.legal-terms`, `article`) and exclude noisy regions (`.banner`, `#live-clock`).
-- **Cryptographic Fingerprinting & Equality Short-Circuit:** Generates SHA-256 hashes of deterministic text streams. If hashes match, the cycle terminates in <1ms without running expensive diff algorithms.
-- **Dual Semantic & Visual Diffing:**
-  - **Myers Algorithm:** Word-by-word and line-by-line diffs with green `+` additions and red `-` deletions.
-  - **Pixelmatch Visual Diff:** Pixel-level comparison with neon magenta mask overlays to spot layout and visual regressions.
-- **Configurable Sensitivity Gating:** Set custom thresholds (High 0.5%, Medium 4%, Low 15%) so trivial one-letter edits don't trigger alerts unless requested.
-- **Incident vs. Change Separation:** Distinguishes 5xx server downtime and Cloudflare Turnstile/CAPTCHA challenges from legitimate content edits.
-- **Multi-Channel Alert Distribution:**
-  - **Discord Webhooks:** Rich embeds with change summaries, diff stats, and screenshot previews.
-  - **Telegram Bot Webhooks:** Instant markdown notifications with diff review links.
-  - **Daily Change Digest:** Consolidated 24-hour executive summary.
-  - **Per-Monitor RSS Feed:** Standalone XML feeds (`/api/monitors/:id/rss`) compatible with Slack, Feedly, and Zapier.
-- **Live Test Studio:** Built-in mock targets (`/mock/store`, `/mock/news`, `/mock/status`) to simulate price drops, restocks, and server outages directly in the app.
-- **Cinematic Visual Identity:** Premium dark glassmorphic interface with an organic watercolor sunset color palette, interactive GSAP-powered 3D scroll story, and dynamic typing effects.
-
----
-
-## Technology Stack
-
-| Layer | Technologies |
-| :--- | :--- |
-| **Frontend SPA** | React 19, Vite, Vanilla CSS Design System, Lucide Icons, GSAP (ScrollTrigger & 3D tilt) |
-| **Backend Gateway** | Node.js, Express, CORS, RESTful JSON API |
-| **Crawling Engine** | Puppeteer-Core (Headless Chrome), Cheerio (Fast HTML parser) |
-| **Diff & Visual Analysis** | `diff` (Myers Algorithm), `pixelmatch`, `pngjs`, Node.js `crypto` (SHA-256) |
-| **Persistence & Database** | SQLite (with file-backed JSON ledger fallback for serverless deployments) |
-| **Deployment** | Vercel (Frontend SPA & Edge Rewrites), Render (Persistent Node.js Backend Engine) |
+1. **Target URL Config** — Monitor configuration, target URLs, crawl settings (`WatchSelector`, `ignoreSelectors`, cadence 1m–24h, sensitivity levels).
+2. **Domain Queue & Coalescing** — `DomainRateLimiter` (1 crawler per hostname concurrency, 1500–2000ms polite delay) & `FetchDeduplicator` (coalesces duplicate concurrent in-flight crawls).
+3. **Crawl Pipeline** — Puppeteer Headless Chromium with strict deadline budgeting (`deadline = startTime + timeoutMs`), bounded stage execution, DOM salvage on navigation timeouts, isolated main-frame response tracking, and Cheerio fast HTTP fallback.
+4. **Incident Classifier** — Inspects for HTTP 5xx outages, network drops, Cloudflare Turnstile/CAPTCHA challenges, 403 WAF blocks, and Incomplete Renders (<15% baseline content); branches to **Log Incident Event** & **Suppress Snapshot (No False Alarm)** or continues to content scrubbing.
+5. **Noise Scrubbing Engine** — 3 deterministic layers: Layer A (DOM pruning of script/style/iframe and user ignore selectors), Layer B (regex filter for ISO/relative dates, clocks, UUIDs, and tokens), and Layer C (whitespace collapse).
+6. **Differential Analysis** — SHA-256 fingerprinting (<1ms equality short-circuit), Myers semantic line/word diffing, sensitivity gating, Pixelmatch visual overlay masks, and Google Gemini 2.5 Flash intelligent change summarization.
+7. **Persistence & History Store** — Writes immutable snapshot record (`id`, `timestamp`, `hash`, `text`, `diffStats`, `screenshotUrl`, `aiSummary`) and securely uploads screenshot PNGs to Supabase Cloud Storage with expiring signed URLs.
+8. **Alert Dispatcher & Feed Distribution** — Discord & Telegram webhooks (keyed by `monitorId-contentHash` to eliminate duplicates), 24-hour daily change digests, and per-monitor RSS feeds (`/api/monitors/:id/rss`).
+43: 
+44: ---
+45: 
+46: ## Key Features
+47: 
+48: - **Resilient Headless Browser Crawling:** Full Puppeteer Chromium rendering at 1280×800 viewport with overall deadline budgeting, bounded stage timeouts, DOM salvage on navigation timeouts, and Cheerio HTTP fetch fallback for constrained runtimes.
+49: - **Visual Selector Picker:** Point-and-click DOM selector inspector allowing users to isolate specific targets (`#pricing`, `.legal-terms`, `article`) and exclude noisy regions (`.banner`, `#live-clock`).
+50: - **Google Gemini AI Change Summaries:** Context-aware synthesis powered by `gemini-2.5-flash` via `@google/genai` to generate concise, plain-English one-line explanations of what changed and why it matters.
+51: - **Encrypted Cloud Screenshot Storage:** Supabase Storage integration with expiring signed URLs, ensuring zero container disk saturation and persistent screenshot history.
+52: - **Cryptographic Fingerprinting & Equality Short-Circuit:** Generates SHA-256 hashes of deterministic text streams. If hashes match, the cycle terminates in <1ms without running expensive diff algorithms.
+53: - **Dual Semantic & Visual Diffing:**
+54:   - **Myers Algorithm:** Word-by-word and line-by-line diffs with green `+` additions and red `-` deletions.
+55:   - **Pixelmatch Visual Diff:** Pixel-level comparison with neon magenta mask overlays to spot layout and visual regressions.
+56: - **Configurable Sensitivity Gating:** Set custom thresholds (High 0.5%, Medium 4%, Low 15%) so trivial one-letter edits don't trigger alerts unless requested.
+57: - **Incident vs. Change Separation:** Distinguishes 5xx server downtime, network drops, Cloudflare Turnstile/CAPTCHA challenges, and incomplete renders from legitimate content edits.
+58: - **Multi-Channel Alert Distribution:**
+59:   - **Discord Webhooks:** Rich embeds with change summaries, diff stats, Gemini AI highlights, and screenshot previews.
+60:   - **Telegram Bot Webhooks:** Instant markdown notifications with diff review links.
+61:   - **Daily Change Digest:** Consolidated 24-hour executive summary.
+62:   - **Per-Monitor RSS Feed:** Standalone XML feeds (`/api/monitors/:id/rss`) compatible with Slack, Feedly, and Zapier.
+63: - **Live Test Studio:** Built-in mock targets (`/mock/store`, `/mock/news`, `/mock/status`) to simulate price drops, restocks, and server outages directly in the app.
+64: - **Cinematic Visual Identity:** Premium dark glassmorphic interface with an organic watercolor sunset color palette, interactive GSAP-powered 3D scroll story, and dynamic typing effects.
+65: 
+66: ---
+67: 
+68: ## Technology Stack
+69: 
+70: | Layer | Technologies |
+71: | :--- | :--- |
+72: | **Frontend SPA** | React 19, Vite 6, Deep Slate Obsidian CSS Design System, Lucide Icons, GSAP |
+73: | **AI Intelligence** | Google Gemini 2.5 Flash (`@google/genai`) for plain-English change summarization |
+74: | **Cloud Storage** | Supabase Storage (`@supabase/supabase-js`) for encrypted screenshot PNGs & signed URLs |
+75: | **Backend Gateway** | Node.js, Express, CORS, RESTful JSON API |
+76: | **Crawling Engine** | Puppeteer-Core (Headless Chrome with deadline budgeting & DOM salvage), Cheerio (Fast HTML parser) |
+77: | **Diff & Visual Analysis** | `diff` (Myers Algorithm), `pixelmatch`, `pngjs`, Node.js `crypto` (SHA-256) |
+78: | **Persistence & Database** | SQLite (with file-backed JSON ledger fallback for serverless deployments) |
+79: | **Deployment** | Vercel (Frontend SPA & Edge CDN), Render (Persistent Node.js Backend Engine) |
 
 ---
 
