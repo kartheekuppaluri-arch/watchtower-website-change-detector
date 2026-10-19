@@ -166,7 +166,12 @@ class Scheduler {
 
         // Deduplicate fetch if another check for same URL is already running
         crawlResult = await this.deduplicator.fetch(monitor.url, async () => {
-          return await crawlWithBrowser(monitor.url, { timeoutMs, monitorId: monitor.id });
+          return await crawlWithBrowser(monitor.url, { 
+            timeoutMs, 
+            monitorId: monitor.id,
+            watchSelector: monitor.watchSelector,
+            allowHttpFallback: true
+          });
         });
 
         this.rateLimiter.releaseLock(monitor.url);
@@ -192,7 +197,7 @@ class Scheduler {
       return { success: false, error: 'Crawler failed' };
     }
 
-    // 1. Check for Outage or CAPTCHA (Question 1)
+    // 1. Check for Outage, CAPTCHA, or Crawl Failures (Question 1)
     if (crawlResult.incident && crawlResult.incident.isIncident) {
       const inc = crawlResult.incident;
       console.warn(`[INCIDENT] ${inc.type} detected on ${monitor.name}: ${inc.message}`);
@@ -210,7 +215,7 @@ class Scheduler {
         lastError: inc.message
       });
 
-      // Crucial: We DO NOT create a snapshot or trigger a content change alert on Outage/Captcha!
+      // Crucial: We DO NOT create a snapshot or trigger a content change alert on Outage/Captcha/Timeout!
       return {
         success: false,
         incident: inc,
@@ -234,11 +239,48 @@ class Scheduler {
         })
       : rawText.trim();
 
-    // 4. Compute Content Hash
-    const contentHash = computeContentHash(cleanedText);
     const latestSnapshot = db.getLatestSnapshot(monitorId);
-
     const nowIso = new Date().toISOString();
+
+    // 4. Guard Against Incomplete Renders:
+    // If previous snapshot had substantial text, but current crawl (especially via HTTP fallback or stalled render)
+    // returned an empty or suspiciously truncated snippet (< 15% of baseline), DO NOT treat as genuine deletion!
+    const isSuspiciouslyIncomplete = latestSnapshot && 
+      latestSnapshot.filteredText && 
+      latestSnapshot.filteredText.length >= 250 && 
+      cleanedText.length < Math.min(60, latestSnapshot.filteredText.length * 0.15);
+
+    if (isSuspiciouslyIncomplete) {
+      const warningMessage = `Suspiciously incomplete render detected (${cleanedText.length} chars vs ${latestSnapshot.filteredText.length} baseline). Preserving last known-good snapshot to prevent false alerts.`;
+      console.warn(`[INTEGRITY GUARD] ${warningMessage} (Monitor: "${monitor.name}", Mode: ${crawlResult.crawlMode || 'browser'})`);
+
+      db.addIncident({
+        monitorId,
+        type: 'INCOMPLETE_RENDER',
+        message: warningMessage,
+        httpStatus: crawlResult.status
+      });
+
+      db.updateMonitor(monitorId, {
+        status: 'ERROR',
+        lastChecked: nowIso,
+        lastError: warningMessage
+      });
+
+      return {
+        success: false,
+        incident: {
+          isIncident: true,
+          type: 'INCOMPLETE_RENDER',
+          message: warningMessage
+        },
+        status: 'INCOMPLETE_RENDER'
+      };
+    }
+
+    // 5. Compute Content Hash
+    const contentHash = computeContentHash(cleanedText);
+
     let changeDetected = false;
     let diffStats = { addedLines: 0, removedLines: 0, totalLines: 0, changedPercent: 0 };
     let summary = 'Initial baseline snapshot captured';
@@ -257,13 +299,14 @@ class Scheduler {
         filteredText: cleanedText,
         screenshotUrl: crawlResult.screenshotUrl,
         screenshotStoragePath: crawlResult.screenshotStoragePath || '',
+        crawlMode: crawlResult.crawlMode || 'browser',
         diffStats,
         summary: 'Initial baseline captured',
         summarySource: 'fallback',
         numberValue: numericMetric
       });
 
-      console.log(`[SCHEDULER] ✅ Saved baseline snapshot ${initialSnap.id} for "${monitor.name}" (Storage: ${initialSnap.screenshotStoragePath || 'none'}, URL: ${initialSnap.screenshotUrl || 'none'})`);
+      console.log(`[SCHEDULER] ✅ Saved baseline snapshot ${initialSnap.id} for "${monitor.name}" (Mode: ${crawlResult.crawlMode || 'browser'}, Storage: ${initialSnap.screenshotStoragePath || 'none'})`);
 
       db.updateMonitor(monitorId, {
         status: 'OK',
@@ -324,13 +367,14 @@ class Scheduler {
           filteredText: cleanedText,
           screenshotUrl: crawlResult.screenshotUrl,
           screenshotStoragePath: crawlResult.screenshotStoragePath || '',
+          crawlMode: crawlResult.crawlMode || 'browser',
           diffStats,
           summary,
           summarySource,
           numberValue: numericMetric
         });
 
-        console.log(`[SCHEDULER] ✅ Saved changed snapshot ${newSnapshot.id} for "${monitor.name}" (Storage: ${newSnapshot.screenshotStoragePath || 'none'}, URL: ${newSnapshot.screenshotUrl || 'none'})`);
+        console.log(`[SCHEDULER] ✅ Saved changed snapshot ${newSnapshot.id} for "${monitor.name}" (Mode: ${crawlResult.crawlMode || 'browser'}, Storage: ${newSnapshot.screenshotStoragePath || 'none'})`);
 
         // Dispatch alerts (Requirement 7)
         await dispatchAlerts(monitor, newSnapshot, diffStats);

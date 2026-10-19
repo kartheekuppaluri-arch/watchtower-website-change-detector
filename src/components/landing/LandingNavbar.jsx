@@ -63,7 +63,7 @@ export default function LandingNavbar({ onStartMonitoring }) {
         {/* Desktop Nav Links */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }} className="landing-desktop-nav">
           <a href="#story" onClick={(e) => scrollTo(e, 'story')} style={{ color: 'var(--text-muted)', fontSize: '13.5px', textDecoration: 'none', fontWeight: 500 }}>
-            Cinematic Story
+            The Story of a Change
           </a>
           <a href="#features" onClick={(e) => scrollTo(e, 'features')} style={{ color: 'var(--text-muted)', fontSize: '13.5px', textDecoration: 'none', fontWeight: 500 }}>
             Capabilities
@@ -117,7 +117,7 @@ export default function LandingNavbar({ onStartMonitoring }) {
           gap: '16px'
         }}>
           <a href="#story" onClick={(e) => scrollTo(e, 'story')} style={{ color: '#ffffff', fontSize: '15px', textDecoration: 'none' }}>
-            Cinematic Story
+            The Story of a Change
           </a>
           <a href="#features" onClick={(e) => scrollTo(e, 'features')} style={{ color: '#ffffff', fontSize: '15px', textDecoration: 'none' }}>
             Capabilities

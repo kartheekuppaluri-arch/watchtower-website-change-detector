@@ -70,7 +70,7 @@ export default function LandingFooter({ onStartMonitoring }) {
                 <span>Launch Main Dashboard</span>
                 <ArrowRight size={13} />
               </button>
-              <a href="#story" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Cinematic 3D Story</a>
+              <a href="#story" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>The Story of a Change</a>
               <a href="#features" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Capabilities Matrix</a>
               <a href="#tech-stack" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>Technology Stack</a>
               <a href="#architecture" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>System Architecture</a>
